@@ -66,7 +66,7 @@ DEFAULT_PROJECT = {
     "name": "Новый квиз",
     "format": "horizontal",           # horizontal (1920x1080) | vertical (1080x1920, Shorts)
     "timing": {"question": 10, "answer": 6, "gap": 2, "intro": 3, "round": 6, "answers_card": 3, "outro": 4},
-    "voice": "ru_RU-dmitri-medium",   # голос Piper для заставок квиза и туров, "" — без озвучки
+    "voice": "ru-RU-DmitryNeural",    # голос для заставок квиза и туров (VOICES), "" — без озвучки
     "answer_audio": "replay",         # replay — тот же отрывок | continue — продолжение | none — тишина
     "shuffle": False,
     "texts": {
@@ -122,8 +122,9 @@ DEFAULT_TRACK = {
 
 PATCHABLE = {"name", "format", "timing", "answer_audio", "shuffle", "texts", "fonts", "style", "visualizer", "covers",
              "rounds", "voice"}
-VOICES = {"ru_RU-dmitri-medium": "Дмитрий", "ru_RU-irina-medium": "Ирина",
-          "ru_RU-denis-medium": "Денис", "ru_RU-ruslan-medium": "Руслан"}
+VOICES = {"ru-RU-DmitryNeural": "Дмитрий", "ru-RU-SvetlanaNeural": "Светлана",  # edge-tts, нужен интернет
+          "ru_RU-dmitri-medium": "Дмитрий (Piper, без интернета)", "ru_RU-irina-medium": "Ирина (Piper, без интернета)",
+          "ru_RU-denis-medium": "Денис (Piper, без интернета)", "ru_RU-ruslan-medium": "Руслан (Piper, без интернета)"}
 TRACK_EDITABLE = {"round", "enabled", "url", "start", "start2", "title", "artist", "album", "year", "hint", "question", "answer", "cover"}
 
 TEXT_PLACEHOLDERS = {
@@ -997,21 +998,31 @@ _fragment_lock = threading.Lock()
 
 
 def speech(ws, voice, text):
-    """Озвучка текста голосом Piper. Громкость выравнивается так же, как у отрывков."""
+    """Озвучка текста: голоса Microsoft через edge-tts (ru-RU-…) или Piper (ru_RU-…).
+    Готовая речь кэшируется, громкость выравнивается так же, как у отрывков."""
     folder = ws.library / "voices"
-    model = folder / f"{voice}.onnx"
-    if not model.is_file():  # голос скачивается один раз, ~60 МБ
-        subprocess.run([sys.executable, "-m", "piper.download_voices", "--data-dir", str(folder), voice],
-                       check=True, capture_output=True)
-    wav = folder / "speech" / f"{hashlib.sha1((voice + chr(10) + text).encode()).hexdigest()}.wav"
-    if not wav.is_file():
-        from piper import PiperVoice
-        wav.parent.mkdir(parents=True, exist_ok=True)
-        with wave.open(str(wav), "wb") as w:
-            PiperVoice.load(str(model)).synthesize_wav(text, w)
-    with wave.open(str(wav)) as w:
-        seconds = w.getnframes() / w.getframerate()
-    return extract_fragment(wav, 0, round(seconds * SAMPLE_RATE))
+    edge = voice.startswith("ru-RU-")
+    out = folder / "speech" / f"{hashlib.sha1((voice + chr(10) + text).encode()).hexdigest()}.{'mp3' if edge else 'wav'}"
+    if not out.is_file():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out.with_suffix(".part" + out.suffix)
+        if edge:
+            import edge_tts
+            try:
+                edge_tts.Communicate(text, voice).save_sync(str(tmp))
+            except Exception as e:
+                raise QuizError(f"Не удалось озвучить текст голосом Microsoft (нужен интернет): {e}")
+        else:
+            model = folder / f"{voice}.onnx"
+            if not model.is_file():  # голос скачивается один раз, ~60 МБ
+                subprocess.run([sys.executable, "-m", "piper.download_voices", "--data-dir", str(folder), voice],
+                               check=True, capture_output=True)
+            from piper import PiperVoice
+            with wave.open(str(tmp), "wb") as w:
+                PiperVoice.load(str(model)).synthesize_wav(text, w)
+        os.replace(tmp, out)
+    _, seconds = probe_duration(out)
+    return extract_fragment(out, 0, round(seconds * SAMPLE_RATE))
 
 
 def extract_fragment_cached(src, start, n_samples):
