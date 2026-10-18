@@ -894,7 +894,8 @@ class Renderer:
     def _answer_texts(self, d, row, max_w):
         # крупно — ответ (по умолчанию исполнитель), под ним песня
         answer = row.get("answer") or row.get("artist") or row["title"]
-        song = " — ".join(p for p in (row.get("artist"), row["title"]) if p) if row.get("answer") else row["title"]
+        artist_line = (row.get("artist") or "").replace("\n", ", ")
+        song = " — ".join(p for p in (artist_line, row["title"]) if p) if row.get("answer") else row["title"]
         blocks = []
         font, lines = fit_text(d, answer or " ", max_w, self.u * 0.08, self.u * 0.045, 3, self.hf)
         blocks.append((font, lines, self.c("text"), 0))
@@ -1008,10 +1009,16 @@ def speech(ws, voice, text):
         tmp = out.with_suffix(".part" + out.suffix)
         if edge:
             import edge_tts
-            try:
-                edge_tts.Communicate(text, voice).save_sync(str(tmp))
-            except Exception as e:
-                raise QuizError(f"Не удалось озвучить текст голосом Microsoft (нужен интернет): {e}")
+            for attempt in range(12):  # сервис Microsoft отвечает через раз — повторяем
+                try:
+                    edge_tts.Communicate(text, voice).save_sync(str(tmp))
+                    break
+                except Exception as e:
+                    error = e
+                    time.sleep(1 + attempt)
+            else:
+                raise QuizError(f"Сервис Microsoft не озвучил текст «{text[:40]}» за 12 попыток "
+                                f"(нужен интернет, или попробуйте другой голос): {error}")
         else:
             model = folder / f"{voice}.onnx"
             if not model.is_file():  # голос скачивается один раз, ~60 МБ
@@ -1083,7 +1090,8 @@ def waveform(ws, path, buckets=1000):
 # ───────────────────────── подготовка к сборке ─────────────────────────
 
 def track_label(t):
-    return f"{t['artist']} — {t['title']}" if t.get("artist") else (t.get("title") or t.get("url") or "без названия")
+    label = f"{t['artist']} — {t['title']}" if t.get("artist") else (t.get("title") or t.get("url") or "без названия")
+    return label.replace("\n", ", ")  # переносы — только для слайдов
 
 
 def prepare_rows(ws, project, need_audio=True):

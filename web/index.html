@@ -174,15 +174,16 @@ li.track.flash { animation: flash 1.2s ease-out; }
   background: #0009; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .t-fields { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 6px 8px; align-content: start; }
-.t-fields input { padding: 5px 8px; background: transparent; border-color: transparent; }
-.t-fields input:hover { border-color: var(--line); }
-.t-fields input:focus { background: var(--bg-2); }
+.t-fields input, .t-fields textarea.ml { padding: 5px 8px; background: transparent; border-color: transparent; }
+.t-fields input:hover, .t-fields textarea.ml:hover { border-color: var(--line); }
+.t-fields input:focus, .t-fields textarea.ml:focus { background: var(--bg-2); }
+.t-fields textarea.ml { resize: none; overflow: hidden; line-height: 1.3; min-height: 0; }
 .t-fields .f-title { font-size: 17px; font-weight: 600; }
 .t-fields .f-artist { font-size: 15px; color: var(--amber); }
 .t-fields .sub { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) 70px minmax(0, 1.3fr); gap: 8px; }
-.t-fields .sub input { font-size: 13px; color: var(--muted); }
+.t-fields .sub input, .t-fields .sub textarea { font-size: 13px; color: var(--muted); }
 .t-fields .qa { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
-.t-fields .qa input { font-size: 13px; }
+.t-fields .qa textarea { font-size: 13px; }
 .t-fields .url { grid-column: 1 / -1; font-size: 12px; color: var(--faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 9px; }
 .t-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; min-width: 110px; }
 .status { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; text-align: right; }
@@ -803,6 +804,9 @@ function coverOf(t) {
   if (t.thumb) return { src: t.thumb, label: "кадр YouTube" };
   return null;
 }
+// многострочное поле трека: Enter переносит строку (например, два исполнителя друг под другом)
+const ml = (t, f, ph, cls = "") =>
+  `<textarea class="ml ${cls}" data-f="${f}" rows="${(t[f] || "").split("\n").length}" placeholder="${esc(ph)}" aria-label="${esc(ph)}">${esc(t[f] || "")}</textarea>`;
 function trackRow(t, i) {
   const c = coverOf(t);
   return `<li class="track${t.enabled ? "" : " off"}" data-id="${t.id}">
@@ -812,16 +816,16 @@ function trackRow(t, i) {
     </div>
     <button class="t-cover" title="Обложка для ответа. Нажмите или перетащите картинку, чтобы заменить">${c ? `<img src="${media(c.src)}" alt=""><span class="src">${esc(c.label)}</span>` : VINYL}</button>
     <div class="t-fields">
-      <input class="f-title" data-f="title" placeholder="Название песни" value="${esc(t.title)}" aria-label="Название">
-      <input class="f-artist" data-f="artist" placeholder="Исполнитель" value="${esc(t.artist)}" aria-label="Исполнитель">
+      ${ml(t, "title", "Название песни", "f-title")}
+      ${ml(t, "artist", "Исполнитель", "f-artist")}
       <div class="sub">
         <input data-f="album" placeholder="Альбом" value="${esc(t.album)}" aria-label="Альбом">
         <input data-f="year" placeholder="Год" value="${esc(t.year)}" inputmode="numeric" aria-label="Год">
-        <input data-f="hint" placeholder="Подсказка на экране вопроса" value="${esc(t.hint)}" aria-label="Подсказка">
+        ${ml(t, "hint", "Подсказка на экране вопроса")}
       </div>
       <div class="qa">
-        <input data-f="question" placeholder="Вопрос — как во вкладке «Тексты»" value="${esc(t.question)}" aria-label="Вопрос">
-        <input data-f="answer" placeholder="Ответ — исполнитель" value="${esc(t.answer)}" aria-label="Ответ">
+        ${ml(t, "question", "Вопрос — как во вкладке «Тексты»")}
+        ${ml(t, "answer", "Ответ — исполнитель")}
       </div>
       ${t.url ? `<div class="url" title="${esc(t.url)}">${esc(t.url)}</div>` : ""}
     </div>
@@ -851,13 +855,13 @@ function refreshTrackRows() {
   renderListBar();
   for (const t of P().tracks) {
     const li = $(`li.track[data-id="${t.id}"]`); if (!li) continue;
-    for (const inp of $$("input[data-f]", li)) {
+    for (const inp of $$("[data-f]", li)) {
       const f = inp.dataset.f;
       if (document.activeElement === inp || S.dirty.has(`t:${t.id}:${f}`)) continue;
       if (f === "enabled") inp.checked = t.enabled;
       else if (f === "start") inp.value = fmtTime(t.start);
       else if (f === "start2") inp.value = t.start2 != null ? fmtTime(t.start2) : "";
-      else if (inp.value !== (t[f] ?? "")) inp.value = t[f] ?? "";
+      else if (inp.value !== (t[f] ?? "")) { inp.value = t[f] ?? ""; if (inp.classList.contains("ml")) inp.rows = inp.value.split("\n").length; }
     }
     const c = coverOf(t), coverBtn = $(".t-cover", li), img = $("img", coverBtn);
     const want = c ? media(c.src) : "";
@@ -883,7 +887,8 @@ function updateStatus(id) {
 
 /* ── события в списке ── */
 document.addEventListener("input", e => {
-  const inp = e.target.closest("li.track input[data-f]"); if (!inp) return;
+  const inp = e.target.closest("li.track [data-f]"); if (!inp) return;
+  if (inp.classList.contains("ml")) inp.rows = inp.value.split("\n").length;
   const id = inp.closest("li.track").dataset.id, f = inp.dataset.f;
   if (f === "enabled") { saveTrack(id, f, inp.checked, { now: true }); inp.closest("li").classList.toggle("off", !inp.checked); return; }
   if (f === "start2") {
@@ -905,7 +910,7 @@ document.addEventListener("change", e => {
   const t = trackById(inp.closest("li").dataset.id); if (t) { inp.value = fmtTime(t.start); inp.style.borderColor = ""; }
 });
 document.addEventListener("focusin", e => {
-  const li = e.target.closest("li.track"); if (!li || !e.target.matches("input[data-f]")) return;
+  const li = e.target.closest("li.track"); if (!li || !e.target.matches("[data-f]")) return;
   if (["title", "artist", "album", "year", "answer"].includes(e.target.dataset.f)) setPreviewTrack(li.dataset.id, "answer");
   else if (["hint", "start", "question"].includes(e.target.dataset.f)) setPreviewTrack(li.dataset.id, "question");
 });
