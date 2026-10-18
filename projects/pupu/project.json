@@ -16,14 +16,14 @@
   "shuffle": false,
   "texts": {
     "intro_title": "Groove Quiz",
-    "intro_subtitle": "{songs} · {seconds} на каждую",
+    "intro_subtitle": "",
     "question_label": "Вопрос {n} из {total}",
     "prompt": "Назовите исполнителя",
     "answers_title": "Ответы",
     "answers_subtitle": "Проверьте себя",
     "answer_label": "Ответ {n} из {total}",
     "outro_title": "Сколько угадали?",
-    "outro_subtitle": "Напишите свой счёт в комментариях"
+    "outro_subtitle": "Напишите свои результаты в комментариях"
   },
   "fonts": {
     "heading": "library/fonts/MartianGrotesk-StdMd.ttf",
@@ -65,7 +65,7 @@
     {
       "id": "ad10974f",
       "title": "Фиты без фита",
-      "rules": "В этом туре вас ожидают фиты, официально не указанные на альбомах",
+      "rules": "В этом туре вас ожидают фиты официально не указанные в альбомах",
       "seconds": 30
     }
   ],
