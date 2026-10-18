@@ -12,6 +12,7 @@ dependencies = [
     # JavaScript-движок для yt-dlp; ставится из PyPI, отдельная установка не нужна
     "deno>=2.0",
     "piper-tts>=1.8.0",
+    "edge-tts>=7.3.1",
 ]
 
 [tool.uv]
