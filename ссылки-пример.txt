@@ -1,0 +1,8 @@
+# По треку в строке. Всё, кроме ссылки, — по желанию.
+# ссылка | начало | название | исполнитель | подсказка
+# Строки с # пропускаются.
+
+https://youtu.be/XXXXXXXXXXX?t=65
+https://music.youtube.com/watch?v=XXXXXXXXXXX | 1:05
+https://www.youtube.com/watch?v=XXXXXXXXXXX | 0:48 | Название песни | Исполнитель | 2004 год
+/home/я/Музыка/песня.mp3 | 0:30

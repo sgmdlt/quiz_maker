@@ -1,0 +1,20 @@
+[project]
+name = "quiz-maker"
+version = "2.0.0"
+description = "Конструктор видео-квизов «Угадай песню»"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pillow>=10.2",
+    "numpy>=1.26",
+    # yt-dlp с компонентом EJS: нужен для YouTube вместе с JavaScript-движком
+    "yt-dlp[default]>=2025.11.12",
+    # JavaScript-движок для yt-dlp; ставится из PyPI, отдельная установка не нужна
+    "deno>=2.0",
+    "piper-tts>=1.8.0",
+]
+
+[tool.uv]
+# Скрипты лежат в корне папки и запускаются через «uv run make_quiz.py …»,
+# собирать проект в пакет не нужно.
+package = false
