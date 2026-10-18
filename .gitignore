@@ -1,0 +1,7 @@
+__pycache__/
+.venv/
+library/
+projects/*/output/
+*.part.mp4
+__MACOSX/
+martian-grotesk-*/
