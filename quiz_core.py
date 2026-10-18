@@ -47,6 +47,7 @@ SAMPLE_RATE = 44100
 SAMPLES_PER_FRAME = SAMPLE_RATE // FPS  # 1470 — звук и картинка совпадают до сэмпла
 FADE_FRAMES = 8                          # плавный переход между экранами (~0.27 с)
 LOUDNESS = -14                           # целевая громкость, LUFS (как у YouTube)
+SPLIT_PAUSE = 2.0                        # пауза между двумя фрагментами вопроса, с
 
 
 class QuizError(Exception):
@@ -105,6 +106,7 @@ DEFAULT_TRACK = {
     "thumb": "",            # миниатюра видео
     "duration": None,
     "start": 0.0,
+    "start2": None,         # начало второго фрагмента: вопрос делится на два по половине времени
     "title": "",
     "artist": "",
     "album": "",
@@ -122,7 +124,7 @@ PATCHABLE = {"name", "format", "timing", "answer_audio", "shuffle", "texts", "fo
              "rounds", "voice"}
 VOICES = {"ru_RU-dmitri-medium": "Дмитрий", "ru_RU-irina-medium": "Ирина",
           "ru_RU-denis-medium": "Денис", "ru_RU-ruslan-medium": "Руслан"}
-TRACK_EDITABLE = {"round", "enabled", "url", "start", "title", "artist", "album", "year", "hint", "question", "answer", "cover"}
+TRACK_EDITABLE = {"round", "enabled", "url", "start", "start2", "title", "artist", "album", "year", "hint", "question", "answer", "cover"}
 
 TEXT_PLACEHOLDERS = {
     "{n}": "номер вопроса", "{total}": "всего вопросов",
@@ -386,7 +388,9 @@ class Workspace:
             for k, v in fields_.items():
                 if k not in DEFAULT_TRACK or k == "id" or (not internal and k not in TRACK_EDITABLE):
                     raise QuizError(f"Нельзя менять поле {k}")
-                if k == "start":
+                if k == "start2":
+                    v = None if v in ("", None) else max(0.0, round(parse_time(v), 2) if isinstance(v, str) else float(v))
+                elif k == "start":
                     v = round(parse_time(v), 2) if isinstance(v, str) else max(0.0, float(v or 0))
                 elif k == "enabled":
                     v = bool(v)
@@ -1087,7 +1091,7 @@ def prepare_rows(ws, project, need_audio=True):
             errors.append(f"№{i} {track_label(t)}: начало {fmt_ts(t['start'])} позже конца трека ({fmt_ts(duration)})")
             continue
         rows.append({
-            "id": t["id"], "round": t["round"], "path": path, "start": float(t["start"] or 0),
+            "id": t["id"], "round": t["round"], "path": path, "start": float(t["start"] or 0), "start2": t["start2"],
             "title": t["title"] or (path.stem if path else "без названия"), "artist": t["artist"],
             "album": t["album"], "year": t["year"], "hint": t["hint"],
             "question": t["question"], "answer": t["answer"],
@@ -1377,6 +1381,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
     for rnd, rs in rounds:
         for row in rs:
             row["q_frames"] = frames_for(question_seconds(project, rnd))
+            if row["start2"] is not None:  # два фрагмента по половине + пауза между ними
+                row["q_frames"] += frames_for(SPLIT_PAUSE)
     renderer = make_renderer(ws, project)
     ring_cfg = renderer.ring.cfg
 
@@ -1429,9 +1435,21 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
     # 2. Отрывки (параллельно)
     progress(0.02, "Нарезаю отрывки")
     log("Нарезаю отрывки…")
+    def cut(r):
+        """(звук вопроса, отрывок для ответа, где в нём кончается вопрос)"""
+        q_samples = r["q_frames"] * SAMPLES_PER_FRAME
+        if r["start2"] is None:
+            frag = extract_fragment(r["path"], r["start"], q_samples + a_samples)
+            return with_fades(frag[:q_samples], 0.1, 0.6), frag, q_samples
+        half = (r["q_frames"] - frames_for(SPLIT_PAUSE)) // 2 * SAMPLES_PER_FRAME
+        frag = extract_fragment(r["path"], r["start"], half + a_samples)
+        second = extract_fragment(r["path"], r["start2"], half)
+        pause = np.zeros((q_samples - 2 * half, 2), dtype=np.float32)
+        return (np.concatenate([with_fades(frag[:half], 0.1, 0.4), pause, with_fades(second, 0.1, 0.6)]),
+                frag, half)
+
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
-        fragments = list(pool.map(
-            lambda r: extract_fragment(r["path"], r["start"], r["q_frames"] * SAMPLES_PER_FRAME + a_samples), rows))
+        fragments = list(pool.map(cut, rows))
     if cancel is not None and cancel.is_set():
         raise Cancelled()
 
@@ -1457,14 +1475,12 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
         chapters_at[len(timeline)] = rnd["title"] or f"Тур {k}"
         add_card("round", (rnd["title"], fmt(rnd["rules"], **rv), 8), speak=True)
         for qn, i in idx:
-            qf = rows[i]["q_frames"]
-            timeline.append(("question", qf + gap_frames, with_fades(fragments[i][:qf * SAMPLES_PER_FRAME], 0.1, 0.6),
-                             (i, dict(rv, n=qn))))
+            timeline.append(("question", rows[i]["q_frames"] + gap_frames, fragments[i][0], (i, dict(rv, n=qn))))
         card = (fmt(texts["answers_title"], **rv), fmt(texts["answers_subtitle"], **rv))
         chapters_at[len(timeline)] = card[0] or f"Ответы · {rnd['title'] or f'Тур {k}'}"
         add_card("answers_card", card)
         for qn, i in idx:
-            audio = answer_audio(fragments[i], rows[i]["q_frames"] * SAMPLES_PER_FRAME)
+            audio = answer_audio(*fragments[i][1:])
             timeline.append(("answer", a_frames + gap_frames, audio, (i, dict(rv, n=qn))))
     add_card("outro", outro)
     total_frames = sum(seg[1] for seg in timeline)
