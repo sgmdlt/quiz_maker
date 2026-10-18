@@ -418,6 +418,7 @@ const S = {
 const P = () => S.d.project;
 const trackById = id => P().tracks.find(t => t.id === id);
 const qSec = t => Number(P().rounds.find(r => r.id === t?.round)?.seconds) || Number(P().timing.question) || 10;
+const fragLen = t => (t?.start2 != null ? qSec(t) / 2 : qSec(t));  // два фрагмента — по половине времени
 
 function getPath(obj, path) { return path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj); }
 function setPath(obj, path, v) { const ks = path.split("."); const last = ks.pop(); let o = obj; for (const k of ks) o = o[k] ??= {}; o[last] = v; }
@@ -826,12 +827,13 @@ function trackRow(t, i) {
     </div>
     <div class="t-side"><span class="status"></span><button class="icon more" aria-label="Действия с треком">⋯</button></div>
     <div class="t-wave">
-      <button class="play" title="Слушать отрывок (${fmtTime(qSec(t))})" aria-label="Слушать отрывок">${ICON_PLAY}</button>
+      <button class="play" title="Слушать отрывок (${fmtTime(fragLen(t))})" aria-label="Слушать отрывок">${ICON_PLAY}</button>
       <div class="wave"><canvas></canvas><div class="wave-msg"></div></div>
       <div class="t-start" title="Начало отрывка. Можно перетащить жёлтое окно на волне">
         <button class="nudge" data-d="-0.5" aria-label="На полсекунды раньше">−</button>
         <input data-f="start" value="${fmtTime(t.start)}" aria-label="Начало отрывка">
         <button class="nudge" data-d="0.5" aria-label="На полсекунды позже">+</button>
+        <input data-f="start2" value="${t.start2 != null ? fmtTime(t.start2) : ""}" placeholder="2-й фрагмент" title="Начало второго фрагмента. Пусто — один фрагмент" aria-label="Начало второго фрагмента" style="width:96px">
       </div>
       <button class="btn small mark" title="Начать отрывок с того места, которое сейчас звучит">Отметить</button>
     </div>
@@ -854,6 +856,7 @@ function refreshTrackRows() {
       if (document.activeElement === inp || S.dirty.has(`t:${t.id}:${f}`)) continue;
       if (f === "enabled") inp.checked = t.enabled;
       else if (f === "start") inp.value = fmtTime(t.start);
+      else if (f === "start2") inp.value = t.start2 != null ? fmtTime(t.start2) : "";
       else if (inp.value !== (t[f] ?? "")) inp.value = t[f] ?? "";
     }
     const c = coverOf(t), coverBtn = $(".t-cover", li), img = $("img", coverBtn);
@@ -883,6 +886,12 @@ document.addEventListener("input", e => {
   const inp = e.target.closest("li.track input[data-f]"); if (!inp) return;
   const id = inp.closest("li.track").dataset.id, f = inp.dataset.f;
   if (f === "enabled") { saveTrack(id, f, inp.checked, { now: true }); inp.closest("li").classList.toggle("off", !inp.checked); return; }
+  if (f === "start2") {
+    const v = inp.value.trim() ? parseTime(inp.value) : null;
+    inp.style.borderColor = Number.isNaN(v) ? "var(--red)" : "";
+    if (!Number.isNaN(v)) { saveTrack(id, "start2", v == null ? null : Math.round(v * 100) / 100); drawWave(id); }
+    return;
+  }
   if (f === "start") {
     const v = parseTime(inp.value);
     inp.style.borderColor = isNaN(v) ? "var(--red)" : "";
@@ -933,7 +942,7 @@ document.addEventListener("click", e => {
 function maxStart(t) {
   const dur = S.waves[t.file]?.duration || t.duration;
   if (!dur) return Infinity;
-  return Math.max(0, dur > qSec(t) ? dur - qSec(t) : dur - 1);  // окно отрывка не уходит за конец трека
+  return Math.max(0, dur > fragLen(t) ? dur - fragLen(t) : dur - 1);  // окно отрывка не уходит за конец трека
 }
 function setStart(id, value) {
   const t = trackById(id); if (!t) return;
@@ -1038,13 +1047,15 @@ function drawWave(id) {
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
   if (!w || !w.duration) return;
   const dur = w.duration, x = s => (s / dur) * W;
-  const a = x(t.start), b = x(Math.min(dur, t.start + qSec(t)));
+  const a = x(t.start), b = x(Math.min(dur, t.start + fragLen(t)));
+  const a2 = t.start2 != null ? x(t.start2) : -1, b2 = t.start2 != null ? x(Math.min(dur, t.start2 + fragLen(t))) : -1;
   g.fillStyle = "#FFC83D26"; g.fillRect(a, 0, Math.max(2, b - a), H);
+  if (a2 >= 0) { g.fillStyle = "#7FD1FF26"; g.fillRect(a2, 0, Math.max(2, b2 - a2), H); }
   const n = w.peaks.length, bw = W / n, mid = H / 2;
   for (let i = 0; i < n; i++) {
     const px = i * bw, inWin = px + bw >= a && px <= b;
     const hgt = Math.max(1, w.peaks[i] * (H * 0.86));
-    g.fillStyle = inWin ? "#FFC83D" : "#6F6296";
+    g.fillStyle = inWin ? "#FFC83D" : px + bw >= a2 && px <= b2 ? "#7FD1FF" : "#6F6296";
     g.fillRect(px, mid - hgt / 2, Math.max(1, bw - 0.4), hgt);
   }
   g.fillStyle = "#FFC83D"; g.fillRect(a, 0, 2, H); g.fillRect(b - 2, 0, 2, H);
@@ -1061,7 +1072,7 @@ document.addEventListener("pointerdown", e => {
   const cv = e.target.closest?.(".wave canvas"); if (!cv) return;
   const id = cv.closest("li").dataset.id, t = trackById(id), w = S.waves[t.file]; if (!w?.duration) return;
   const at = timeAt(cv, e.clientX, w.duration);
-  const inWin = at >= t.start && at <= t.start + qSec(t);
+  const inWin = at >= t.start && at <= t.start + fragLen(t);
   waveDrag = { id, cv, dur: w.duration, startX: e.clientX, offset: at - t.start, inWin, moved: false };
   cv.setPointerCapture(e.pointerId);
   if (inWin) cv.classList.add("grabbing");
@@ -1070,7 +1081,7 @@ document.addEventListener("pointermove", e => {
   const cv = e.target.closest?.(".wave canvas");
   if (cv && !waveDrag) {
     const t = trackById(cv.closest("li").dataset.id), w = S.waves[t?.file];
-    if (w?.duration) { const at = timeAt(cv, e.clientX, w.duration); cv.classList.toggle("grab", at >= t.start && at <= t.start + qSec(t)); }
+    if (w?.duration) { const at = timeAt(cv, e.clientX, w.duration); cv.classList.toggle("grab", at >= t.start && at <= t.start + fragLen(t)); }
   }
   if (!waveDrag) return;
   if (Math.abs(e.clientX - waveDrag.startX) > 3) waveDrag.moved = true;
@@ -1086,13 +1097,13 @@ document.addEventListener("pointerup", e => {
   if (!waveDrag) return;
   const d = waveDrag; waveDrag = null; d.cv.classList.remove("grabbing");
   const t = trackById(d.id);
-  if (d.inWin && d.moved) { setStart(d.id, t.start); playFrom(d.id, t.start, qSec(t)); }
+  if (d.inWin && d.moved) { setStart(d.id, t.start); playFrom(d.id, t.start, fragLen(t)); }
   else if (!d.moved) playFrom(d.id, timeAt(d.cv, e.clientX, d.dur), null);
 });
 document.addEventListener("dblclick", e => {
   const cv = e.target.closest?.(".wave canvas"); if (!cv) return;
   const id = cv.closest("li").dataset.id, w = S.waves[trackById(id).file]; if (!w?.duration) return;
-  const at = timeAt(cv, e.clientX, w.duration); setStart(id, at); playFrom(id, at, qSec(trackById(id)));
+  const at = timeAt(cv, e.clientX, w.duration); setStart(id, at); playFrom(id, at, fragLen(trackById(id)));
 });
 
 function playFrom(id, from, length) {
@@ -1113,7 +1124,8 @@ function togglePlay(id) {
   if (S.play.id === id && !player.paused) { player.pause(); return; }
   const t = trackById(id);
   if (S.play.id === id && player.paused && player.currentTime > t.start && S.play.stopAt) { player.play(); requestAnimationFrame(tick); return; }
-  playFrom(id, t.start, qSec(t));
+  playFrom(id, t.start, fragLen(t));
+  if (t.start2 != null) S.play.next = t.start2;
 }
 function stopPlayback() { player.pause(); const id = S.play.id; S.play = { id: null, stopAt: null }; if (id) { markPlaying(id, false); drawWave(id); } }
 function markPlaying(id, on) {
@@ -1126,7 +1138,11 @@ function markPlaying(id, on) {
 }
 function tick() {
   const id = S.play.id; if (!id) return;
-  if (S.play.stopAt && player.currentTime >= S.play.stopAt) { player.pause(); S.play.stopAt = null; }
+  if (S.play.stopAt && player.currentTime >= S.play.stopAt) {
+    const t = trackById(id);
+    if (S.play.next != null) { player.currentTime = S.play.next; S.play.stopAt = S.play.next + fragLen(t); S.play.next = null; }
+    else { player.pause(); S.play.stopAt = null; }
+  }
   const li = $(`li.track[data-id="${id}"]`);
   if (li) {
     $(".play", li).innerHTML = player.paused ? ICON_PLAY : ICON_PAUSE;
@@ -1388,7 +1404,7 @@ function buildProblems() {
     else if (s !== "ready") out.push([t.id, `${name}: ещё не скачан`]);
     else if (t.duration && t.start >= t.duration) out.push([t.id, `${name}: начало позже конца трека`]);
     else if (!t.title) out.push([t.id, `${name}: нет названия`, true]);
-    else if (t.duration && t.start + qSec(t) > t.duration) out.push([t.id, `${name}: трек кончается раньше отрывка — в конце вопроса будет тишина`, true]);
+    else if (t.duration && t.start + fragLen(t) > t.duration) out.push([t.id, `${name}: трек кончается раньше отрывка — в конце вопроса будет тишина`, true]);
   });
   return out;
 }
