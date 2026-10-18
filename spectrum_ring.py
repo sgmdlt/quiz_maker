@@ -308,20 +308,27 @@ class SpectrumRing:
 
     # --- кадр ---
 
-    def arc_window(self, t, duration):
-        """Видимая дуга (от, до) в градусах от начала: сначала растёт, потом убывает."""
+    def arc_window(self, t, duration, pre=0.0):
+        """Видимая дуга (от, до) в градусах от начала: сначала растёт, потом убывает.
+        pre > 0 — кольцо прорисовывается и стоит полным pre секунд, отсчёт идёт после."""
         soft = max(1e-3, self.cfg.edge_softness)
+        if pre > 0:
+            if t < pre:
+                reveal = min(self.cfg.reveal_seconds, pre)
+                return -soft, _ease(self.cfg.reveal_easing, min(1.0, t / reveal) if reveal > 0 else 1.0) * (360 + soft)
+            q = min(1.0, max(0.0, (t - pre) / max(1e-6, duration)))
+            return q * (360 + soft) - soft, 360 + soft
         reveal = min(self.cfg.reveal_seconds, duration * 0.5)
         if reveal > 0 and t < reveal:
             return -soft, _ease(self.cfg.reveal_easing, t / reveal) * (360 + soft)
         q = min(1.0, max(0.0, (t - reveal) / max(1e-6, duration - reveal)))
         return q * (360 + soft) - soft, 360 + soft
 
-    def draw(self, frame, center, levels, t, duration):
+    def draw(self, frame, center, levels, t, duration, pre=0.0):
         """Рисует кольцо и цифры на кадре (кадр меняется на месте)."""
         cfg, ss = self.cfg, self.ss
         soft = max(1e-3, cfg.edge_softness)
-        a_from, a_to = self.arc_window(t, duration)
+        a_from, a_to = self.arc_window(t, duration, pre)
         vis = np.clip((self.rel - a_from) / soft, 0, 1) * np.clip((a_to - self.rel) / soft, 0, 1)
         lengths = (self.min_len + np.asarray(levels) * self.max_len) * vis
 
@@ -356,7 +363,7 @@ class SpectrumRing:
         if ss > 1:
             mask = mask.reduce(ss)
 
-        remaining = duration - t
+        remaining = min(duration, pre + duration - t)  # во время pre цифра стоит на полном времени
         warn = 0.0
         if cfg.warning_seconds > 0:
             warn = min(1.0, max(0.0, (cfg.warning_seconds - remaining) / 0.3))

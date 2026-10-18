@@ -5,11 +5,13 @@
   "timing": {
     "question": 20.0,
     "answer": 10.0,
+    "gap": 2,
     "intro": 15.0,
     "round": 15.0,
     "answers_card": 3,
     "outro": 4
   },
+  "voice": "ru_RU-dmitri-medium",
   "answer_audio": "continue",
   "shuffle": false,
   "texts": {
@@ -37,7 +39,9 @@
     "background": "",
     "cover_backdrop": true
   },
-  "visualizer": {},
+  "visualizer": {
+    "warning_color": "#c70a2d"
+  },
   "covers": {
     "online": true,
     "itunes_country": "US"

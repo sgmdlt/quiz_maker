@@ -836,21 +836,22 @@ class Renderer:
             draw_lines(d, lines, font, self.cx, y + self.u * 0.01, self.c("muted"))
         return img
 
-    def question_frame(self, base, levels, i, n_frames, frame=None, clean=None):
+    def question_frame(self, base, levels, i, n_frames, frame=None, clean=None, pre_frames=0):
+        """n_frames — кадры отсчёта; pre_frames — пауза перед ним (кольцо полное, звука нет)."""
         box = self.ring.box((self.cx, self.cy))
         if frame is None:
             frame = base.copy()
         else:
             frame.paste(clean if clean is not None else base.crop(box), box[:2])
-        self.ring.draw(frame, (self.cx, self.cy), levels[i], i / FPS, n_frames / FPS)
+        self.ring.draw(frame, (self.cx, self.cy), levels[i], i / FPS, n_frames / FPS, pre_frames / FPS)
         return frame
 
-    def question_frames(self, base, levels, n_frames):
+    def question_frames(self, base, levels, n_frames, pre_frames=0):
         """Кадры вопроса: визуализатор по настоящему спектру + обратный отсчёт."""
         frame = base.copy()
         clean = base.crop(self.ring.box((self.cx, self.cy)))
-        for i in range(n_frames):
-            yield self.question_frame(base, levels, i, n_frames, frame, clean)
+        for i in range(pre_frames + n_frames):
+            yield self.question_frame(base, levels, i, n_frames, frame, clean, pre_frames)
 
     # --- ответ ---
 
@@ -1278,12 +1279,15 @@ def preview(ws, slug, track_id=None, log=print):
     label_vals = dict(round_vals, n=index)
     base = r.question_base(fmt(texts["question_label"], **label_vals),
                            fmt(row.get("question") or texts["prompt"], **label_vals), row.get("hint", ""))
-    reveal_i = min(q_frames - 1, int(r.ring.cfg.reveal_seconds * FPS * 0.45))
+    pre = round(timing["gap"] * FPS)  # как в ролике: пауза с полным кольцом перед отсчётом
+    levels = np.concatenate([np.zeros((pre, levels.shape[1]), dtype=levels.dtype), levels])
+    reveal_s = min(r.ring.cfg.reveal_seconds, pre / FPS) if pre else r.ring.cfg.reveal_seconds
+    reveal_i = min(pre + q_frames - 1, int(reveal_s * FPS * 0.45))
     images = {
         "intro": r.title_card(fmt(texts["intro_title"], **vals), fmt(texts["intro_subtitle"], **vals), 8),
         "round": r.title_card(rnd["title"], fmt(rnd["rules"], **round_vals), 8),
-        "reveal": r.question_frame(base, levels, reveal_i, q_frames),
-        "question": r.question_frame(base, levels, int(q_frames * 0.55), q_frames),
+        "reveal": r.question_frame(base, levels, reveal_i, q_frames, pre_frames=pre),
+        "question": r.question_frame(base, levels, pre + int(q_frames * 0.55), q_frames, pre_frames=pre),
         "answers": r.title_card(fmt(texts["answers_title"], **round_vals), fmt(texts["answers_subtitle"], **round_vals)),
         "answer": r.answer_card(fmt(texts["answer_label"], **label_vals), row),
         "outro": r.title_card(fmt(texts["outro_title"], **vals), fmt(texts["outro_subtitle"], **vals)),
@@ -1393,7 +1397,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
     intro = (fmt(texts["intro_title"], **vals), fmt(texts["intro_subtitle"], **vals), 8)
     outro = (fmt(texts["outro_title"], **vals), fmt(texts["outro_subtitle"], **vals))
 
-    gap_frames = round(timing["gap"] * FPS)  # пауза после каждого вопроса и ответа
+    gap_frames = round(timing["gap"] * FPS)  # пауза перед отсчётом каждого вопроса и после каждого ответа
 
     def card_frames(key, title):  # пустой заголовок или нулевая длительность — экрана нет
         return frames_for(timing[key]) if timing[key] > 0 and title else 0
@@ -1407,13 +1411,6 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
             audio = np.concatenate([lead, speech(ws, project["voice"], "\n".join(p for p in card[:2] if p))])
             frames = max(frames, frames_for(len(audio) / SAMPLE_RATE + 1))
         timeline.append(("card", frames, audio, card))
-
-    def hold(frames, extra):
-        last = None
-        for last in frames:
-            yield last
-        for _ in range(extra):
-            yield last
 
     out_dir = ws.project_dir(slug) / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1475,7 +1472,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
         chapters_at[len(timeline)] = rnd["title"] or f"Тур {k}"
         add_card("round", (rnd["title"], fmt(rnd["rules"], **rv), 8), speak=True)
         for qn, i in idx:
-            timeline.append(("question", rows[i]["q_frames"] + gap_frames, fragments[i][0], (i, dict(rv, n=qn))))
+            audio = np.concatenate([np.zeros((gap_frames * SAMPLES_PER_FRAME, 2), dtype=np.float32), fragments[i][0]])
+            timeline.append(("question", gap_frames + rows[i]["q_frames"], audio, (i, dict(rv, n=qn))))
         card = (fmt(texts["answers_title"], **rv), fmt(texts["answers_subtitle"], **rv))
         chapters_at[len(timeline)] = card[0] or f"Ответы · {rnd['title'] or f'Тур {k}'}"
         add_card("answers_card", card)
@@ -1531,9 +1529,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
                     row = rows[i]
                     base = renderer.question_base(fmt(texts["question_label"], **lv),
                                                   fmt(row["question"] or texts["prompt"], **lv), row["hint"])
-                    qf = row["q_frames"]
-                    levels = analyze(audio.mean(axis=1), SAMPLE_RATE, qf, FPS, ring_cfg)
-                    writer.segment(hold(renderer.question_frames(base, levels, qf), gap_frames), frames_n)
+                    levels = analyze(audio.mean(axis=1), SAMPLE_RATE, frames_n, FPS, ring_cfg)
+                    writer.segment(renderer.question_frames(base, levels, row["q_frames"], gap_frames), frames_n)
                 else:
                     i, lv = data
                     writer.segment(renderer.answer_card(fmt(texts["answer_label"], **lv), rows[i]), frames_n)
