@@ -1282,7 +1282,7 @@ function renderLook() {
           <span class="row"><select id="bgPick" style="flex:1"><option value="">Без картинки — градиент</option>
             ${lib.image.map(f => `<option value="${esc(f)}" ${f === st.background ? "selected" : ""}>${esc(f.split("/").pop())}</option>`).join("")}</select>
             <button class="btn small" id="bgUpload">Загрузить…</button></span></label>
-        <label class="field"><span>Фоновая музыка на заставках квиза и туров</span>
+        <label class="field"><span>Фоновая музыка: заставка, правила туров, «Ответы», финал</span>
           <span class="row"><select id="musicPick" style="flex:1"><option value="">Без музыки</option>
             ${lib.music.map(f => `<option value="${esc(f)}" ${f === p.music ? "selected" : ""}>${esc(f.split("/").pop())}</option>`).join("")}</select>
             <button class="btn small" id="musicUpload">Загрузить…</button></span></label>
