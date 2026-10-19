@@ -67,6 +67,8 @@ DEFAULT_PROJECT = {
     "format": "horizontal",           # horizontal (1920x1080) | vertical (1080x1920, Shorts)
     "timing": {"question": 10, "answer": 6, "gap": 2, "intro": 3, "round": 6, "answers_card": 3, "outro": 4},
     "voice": "ru-RU-DmitryNeural",    # голос для заставок квиза и туров (VOICES), "" — без озвучки
+    "music": "",                      # фоновая музыка заставок квиза и туров, "" — без музыки
+    "music_volume": 0.3,              # громкость музыки относительно голоса, 0..1
     "answer_audio": "replay",         # replay — тот же отрывок | continue — продолжение | none — тишина
     "shuffle": False,
     "texts": {
@@ -121,7 +123,7 @@ DEFAULT_TRACK = {
 }
 
 PATCHABLE = {"name", "format", "timing", "answer_audio", "shuffle", "texts", "fonts", "style", "visualizer", "covers",
-             "rounds", "voice"}
+             "rounds", "voice", "music", "music_volume"}
 VOICES = {"ru-RU-DmitryNeural": "Дмитрий", "ru-RU-SvetlanaNeural": "Светлана",  # edge-tts, нужен интернет
           "ru_RU-dmitri-medium": "Дмитрий (Piper, без интернета)", "ru_RU-irina-medium": "Ирина (Piper, без интернета)",
           "ru_RU-denis-medium": "Денис (Piper, без интернета)", "ru_RU-ruslan-medium": "Руслан (Piper, без интернета)"}
@@ -430,10 +432,11 @@ class Workspace:
 
     # --- файлы ---
     def save_upload(self, kind, name, stream, length):
-        folders = {"font": "fonts", "image": "images", "cover": "covers/manual", "audio": "audio"}
+        folders = {"font": "fonts", "image": "images", "cover": "covers/manual", "audio": "audio", "music": "music"}
         allowed = {"font": {".ttf", ".otf"}, "image": {".jpg", ".jpeg", ".png", ".webp"},
                    "cover": {".jpg", ".jpeg", ".png", ".webp"},
                    "audio": {".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".webm", ".aac"}}
+        allowed["music"] = allowed["audio"]
         if kind not in folders:
             raise QuizError(f"Неизвестный тип файла: {kind}")
         name = safe_filename(name)
@@ -479,7 +482,7 @@ class Workspace:
         return self.rel(dest)
 
     def library_files(self, kind):
-        folder = {"font": "fonts", "image": "images", "cover": "covers/manual"}[kind]
+        folder = {"font": "fonts", "image": "images", "cover": "covers/manual", "music": "music"}[kind]
         d = self.library / folder
         if not d.is_dir():
             return []
@@ -1384,8 +1387,9 @@ def frames_for(seconds):
     return max(1, round(float(seconds) * FPS))
 
 
-def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
-    """Собирает видео. Возвращает пути к видео, обложке ролика и описанию."""
+def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=None):
+    """Собирает видео. Возвращает пути к видео, обложке ролика и описанию.
+    round_id (id или название тура) — пробный ролик только из этого тура, без общей заставки и финала."""
     started = time.time()
     progress = progress or (lambda frac, stage: None)
     project = ws.load(slug)
@@ -1397,6 +1401,13 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
         raise QuizError("В квизе нет ни одного включённого трека")
     if project.get("shuffle"):
         random.shuffle(rows)
+    if round_id:
+        rnd = next((r for r in project["rounds"] if round_id in (r["id"], r["title"])), None)
+        if not rnd:
+            raise QuizError(f"Нет тура «{round_id}»")
+        rows = [r for r in rows if r["round"] == rnd["id"]]
+        if not rows:
+            raise QuizError(f"В туре «{rnd['title']}» нет включённых треков")
     if limit:
         rows = rows[:int(limit)]
     rounds = group_rounds(project, rows)
@@ -1429,11 +1440,18 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
             lead = np.zeros((round(0.4 * SAMPLE_RATE), 2), dtype=np.float32)
             audio = np.concatenate([lead, speech(ws, project["voice"], "\n".join(p for p in card[:2] if p))])
             frames = max(frames, frames_for(len(audio) / SAMPLE_RATE + 1))
+        if speak and project["music"]:  # фоновая музыка под голосом, каждый раз с начала
+            n = frames * SAMPLES_PER_FRAME
+            bed = with_fades(extract_fragment(ws.resolve(project["music"]), 0, n), 0.5, 1.5)
+            bed *= float(project["music_volume"])
+            if audio is not None:
+                bed[:len(audio)] += audio
+            audio = bed
         timeline.append(("card", frames, audio, card))
 
     out_dir = ws.project_dir(slug) / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
-    stem = f"{slug}_test" if limit else slug
+    stem = f"{slug}_test" if limit or round_id else slug
     out = out_dir / f"{stem}.mp4"
 
     # 1. Обложки
@@ -1482,7 +1500,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
     timeline = []  # (вид, кадров, звук, данные)
     chapters_at = {}  # номер сегмента → глава в описании
     log("Озвучиваю заставки…" if project["voice"] else "Собираю сценарий…")
-    add_card("intro", intro, speak=True)
+    if not round_id:
+        add_card("intro", intro, speak=True)
     first = 0
     for k, (rnd, rs) in enumerate(rounds, start=1):
         rv = text_values(len(rs), question_seconds(project, rnd), round=rnd["title"])
@@ -1499,7 +1518,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None):
         for qn, i in idx:
             audio = answer_audio(*fragments[i][1:])
             timeline.append(("answer", a_frames + gap_frames, audio, (i, dict(rv, n=qn))))
-    add_card("outro", outro)
+    if not round_id:
+        add_card("outro", outro)
     total_frames = sum(seg[1] for seg in timeline)
     log(f"Квиз: {n} {plural(n, 'песня', 'песни', 'песен')}, видео {fmt_ts(total_frames / FPS)}, "
         f"{renderer.W}x{renderer.H}")

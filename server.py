@@ -156,7 +156,8 @@ class App:
                                 "description_text": desc.read_text(encoding="utf-8") if desc.exists() else ""})
         return {"slug": slug, "project": project, "status": self.track_status(project, slug),
                 "jobs": self.jobs.for_project(slug), "outputs": outputs,
-                "library": {"font": self.ws.library_files("font"), "image": self.ws.library_files("image")}}
+                "library": {"font": self.ws.library_files("font"), "image": self.ws.library_files("image"),
+                            "music": self.ws.library_files("music")}}
 
     # --- задачи ---
 
@@ -196,14 +197,14 @@ class App:
                     return result
         return self.jobs.start("preview", slug, run, {"track_id": track_id})
 
-    def start_build(self, slug, limit=None):
+    def start_build(self, slug, limit=None, round_id=None):
         if self.jobs.running(slug, "build"):
             raise q.QuizError("Сборка уже идёт")
 
         def run(job):
             return q.build(self.ws, slug, limit=limit, log=job.log.append, progress=job.set_progress,
-                           cancel=job.cancel)
-        return self.jobs.start("build", slug, run, {"limit": limit})
+                           cancel=job.cancel, round_id=round_id)
+        return self.jobs.start("build", slug, run, {"limit": limit, "round": round_id})
 
     def start_sheet(self, slug):
         def run(job):
@@ -496,7 +497,7 @@ def start_job(h, slug, kind):
         job = app.start_sheet(slug)
     else:
         limit = data.get("limit")
-        job = app.start_build(slug, int(limit) if limit else None)
+        job = app.start_build(slug, int(limit) if limit else None, data.get("round") or None)
     h.send_json(job.to_dict())
 
 

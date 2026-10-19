@@ -31,9 +31,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   его модели скачиваются в `library/voices/`. Пусто — без озвучки. Готовая речь кэшируется в
   `library/voices/speech/` по хэшу голоса и текста. Сервис edge-tts отвечает нестабильно
   (`NoAudioReceived` на часть запросов), поэтому `speech` делает до 12 попыток с растущей паузой.
+  Громкость речи выравнивается через `extract_fragment`, как у отрывков. Если диктор читает дольше
+  `timing.intro`/`timing.round`, заставка удлиняется. Под озвучку можно подложить фоновую музыку
+  (`project.music`, файлы в `library/music/`, громкость `music_volume`); каждая заставка
+  запускает её с начала (`add_card` в `build`).
 - **Переносы строк:** текстовые поля трека в интерфейсе — `textarea.ml`, Enter переносит строку.
-  `wrap_text` учитывает `\n` на слайдах, `track_label` для описания заменяет `\n` на «, ». Громкость речи выравнивается через `extract_fragment`, как у отрывков.
-  Если диктор читает дольше `timing.intro`/`timing.round`, заставка удлиняется.
+  `wrap_text` учитывает `\n` на слайдах, `track_label` для описания заменяет `\n` на «, ».
 - **Вопрос:** круговой аудио-визуализатор по настоящему FFT отрывка (`spectrum_ring.py`), это
   отдельный модуль с настройками в `RingConfig`. Анимация такая: кольцо прорисовывается по часовой
   стрелке (`reveal_seconds`), потом убывает по часовой, как таймер. В центре цифры обратного отсчёта,
@@ -76,7 +79,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Команды
 
-Тестов, линтера и git-репозитория пока нет. Всё запускается через `uv run` (иначе не находятся
+Тестов и линтера пока нет, git есть (ветка `main`). Всё запускается через `uv run` (иначе не находятся
 yt-dlp и deno из `.venv`). Из системы нужен ffmpeg/ffprobe.
 
 ```bash
@@ -85,7 +88,7 @@ uv run make_quiz.py serve [--port 9000] [--no-browser]
 uv run make_quiz.py new "Название" --links ссылки-пример.txt
 uv run make_quiz.py add <slug> файл.txt
 uv run make_quiz.py download|covers|preview <slug>
-uv run make_quiz.py build <slug> [--limit 2] [--no-download]
+uv run make_quiz.py build <slug> [--limit 2] [--round "Тур"] [--no-download]  # --round: пробник тура без общих заставок
 uv run make_quiz.py --home <папка> …             # другой корень вместо папки со скриптами
 ```
 
