@@ -32,13 +32,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   `library/voices/speech/` по хэшу голоса и текста. Сервис edge-tts отвечает нестабильно
   (`NoAudioReceived` на часть запросов), поэтому `speech` делает до 12 попыток с растущей паузой.
   Громкость речи выравнивается через `extract_fragment`, как у отрывков. Если диктор читает дольше
-  `timing.intro`/`timing.round`, заставка удлиняется. Под озвучку можно подложить фоновую музыку
-  (`project.music`, файлы в `library/music/`, громкость `music_volume`); каждый такой слайд
-  запускает её с начала (`add_card` в `build`).
+  `timing.intro`/`timing.round`, заставка удлиняется. Под озвучку можно подложить фоновую музыку:
+  `project.intro_music` (заставка квиза), `project.outro_music` (финал), `round.music` (правила тура
+  и его «Ответы»). Значение — путь к файлу (`library/music/`) или ссылка (YouTube, скачивается в
+  `library/youtube`, начало из `?t=`), см. `music_audio`. Громкость общая (`music_volume`). Каждый слайд
+  запускает музыку с начала (`add_card` в `build`). Старое общее поле `music` при загрузке
+  переносится в intro/outro (`normalize`).
   Текст для диктора отделён от текста слайда: `texts.intro_narration`, `round.narration`,
   `texts.answers_narration`, `texts.outro_narration` (с подстановками). На заставке квиза и туров
   пустое поле означает, что читается текст слайда; на «Ответах» и финале — что озвучки нет.
-  Музыка играет на всех четырёх слайдах: заставка квиза, правила тура, «Ответы», финал.
 - **Переносы строк:** текстовые поля трека в интерфейсе — `textarea.ml`, Enter переносит строку.
   `wrap_text` учитывает `\n` на слайдах, `track_label` для описания заменяет `\n` на «, ».
 - **Вопрос:** круговой аудио-визуализатор по настоящему FFT отрывка (`spectrum_ring.py`), это

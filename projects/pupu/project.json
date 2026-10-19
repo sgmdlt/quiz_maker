@@ -12,6 +12,8 @@
     "outro": 4
   },
   "voice": "ru-RU-DmitryNeural",
+  "music": "library/music/audio_2026-06-30_12-17-58.ogg",
+  "music_volume": 0.3,
   "answer_audio": "continue",
   "shuffle": false,
   "texts": {
@@ -23,7 +25,10 @@
     "answers_subtitle": "Проверьте себя",
     "answer_label": "Ответ {n} из {total}",
     "outro_title": "Сколько угадали?",
-    "outro_subtitle": "Напишите свои результаты в комментариях"
+    "outro_subtitle": "Напишите свои результаты в комментариях",
+    "intro_narration": "",
+    "answers_narration": "",
+    "outro_narration": ""
   },
   "fonts": {
     "heading": "library/fonts/MartianGrotesk-StdMd.ttf",

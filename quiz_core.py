@@ -67,7 +67,9 @@ DEFAULT_PROJECT = {
     "format": "horizontal",           # horizontal (1920x1080) | vertical (1080x1920, Shorts)
     "timing": {"question": 10, "answer": 6, "gap": 2, "intro": 3, "round": 6, "answers_card": 3, "outro": 4},
     "voice": "ru-RU-DmitryNeural",    # голос для заставок квиза и туров (VOICES), "" — без озвучки
-    "music": "",                      # фоновая музыка заставок квиза и туров, "" — без музыки
+    # фоновая музыка: путь к файлу или ссылка (YouTube, начало из ?t=); у тура своя — round["music"]
+    "intro_music": "",
+    "outro_music": "",
     "music_volume": 0.3,              # громкость музыки относительно голоса, 0..1
     "answer_audio": "replay",         # replay — тот же отрывок | continue — продолжение | none — тишина
     "shuffle": False,
@@ -127,7 +129,7 @@ DEFAULT_TRACK = {
 }
 
 PATCHABLE = {"name", "format", "timing", "answer_audio", "shuffle", "texts", "fonts", "style", "visualizer", "covers",
-             "rounds", "voice", "music", "music_volume"}
+             "rounds", "voice", "intro_music", "outro_music", "music_volume"}
 VOICES = {"ru-RU-DmitryNeural": "Дмитрий", "ru-RU-SvetlanaNeural": "Светлана",  # edge-tts, нужен интернет
           "ru_RU-dmitri-medium": "Дмитрий (Piper, без интернета)", "ru_RU-irina-medium": "Ирина (Piper, без интернета)",
           "ru_RU-denis-medium": "Денис (Piper, без интернета)", "ru_RU-ruslan-medium": "Руслан (Piper, без интернета)"}
@@ -166,6 +168,9 @@ def normalize(project):
     p = deep_merge(DEFAULT_PROJECT, project)
     p["tracks"] = [new_track(**t) for t in p.get("tracks") or []]
     p["rounds"] = p["rounds"] or [new_round(1)]
+    old_music = p.pop("music", "")  # раньше музыка была одна на весь квиз
+    if old_music and not (p["intro_music"] or p["outro_music"]):
+        p["intro_music"] = p["outro_music"] = old_music
     ids = {r["id"] for r in p["rounds"]}
     for t in p["tracks"]:  # трек без тура (или тур удалён) — в первый тур
         if t["round"] not in ids:
@@ -1039,6 +1044,23 @@ def speech(ws, voice, text):
     return extract_fragment(out, 0, round(seconds * SAMPLE_RATE))
 
 
+def music_audio(ws, source, n_samples):
+    """Фоновая музыка: файл или ссылка (скачивается в library/youtube, начало — из ?t=)."""
+    import shlex
+    import youtube
+
+    if not youtube.is_url(source):
+        return extract_fragment(ws.resolve(source), 0, n_samples)
+    _, start, _ = youtube.parse_url(source)
+    try:
+        extra = shlex.split(ws.settings().get("ytdlp_args") or "")
+        res = youtube.download(source, ws.library / "youtube", extra_args=extra,
+                               has_js=bool(youtube.tool_info().get("js_runtime")))
+    except youtube.DownloadError as e:
+        raise QuizError(f"Не удалось скачать фоновую музыку {source}: {e}")
+    return extract_fragment(res["audio"], start or 0, n_samples)
+
+
 def extract_fragment_cached(src, start, n_samples):
     """То же, но с памятью на несколько последних отрывков — для быстрого предпросмотра."""
     try:
@@ -1436,8 +1458,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     def card_frames(key, title):  # пустой заголовок или нулевая длительность — экрана нет
         return frames_for(timing[key]) if timing[key] > 0 and title else 0
 
-    def add_card(key, card, narration="", music=False):
-        """narration — что читает диктор; экран держится, пока он не дочитает."""
+    def add_card(key, card, narration="", music=""):
+        """narration — что читает диктор (экран держится, пока он не дочитает), music — фоновая музыка."""
         frames, audio = card_frames(key, card[0]), None
         if not frames:
             return
@@ -1445,9 +1467,9 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
             lead = np.zeros((round(0.4 * SAMPLE_RATE), 2), dtype=np.float32)
             audio = np.concatenate([lead, speech(ws, project["voice"], narration)])
             frames = max(frames, frames_for(len(audio) / SAMPLE_RATE + 1))
-        if music and project["music"]:  # фоновая музыка под голосом, каждый раз с начала
+        if music:  # фоновая музыка под голосом, каждый раз с начала
             n = frames * SAMPLES_PER_FRAME
-            bed = with_fades(extract_fragment(ws.resolve(project["music"]), 0, n), 0.5, 1.5)
+            bed = with_fades(music_audio(ws, music, n), 0.5, 1.5)
             bed *= float(project["music_volume"])
             if audio is not None:
                 bed[:len(audio)] += audio
@@ -1506,7 +1528,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     chapters_at = {}  # номер сегмента → глава в описании
     log("Озвучиваю заставки…" if project["voice"] else "Собираю сценарий…")
     if not round_id:
-        add_card("intro", intro, fmt(texts["intro_narration"], **vals) or "\n".join(intro[:2]), music=True)
+        add_card("intro", intro, fmt(texts["intro_narration"], **vals) or "\n".join(intro[:2]), project["intro_music"])
     first = 0
     for k, (rnd, rs) in enumerate(rounds, start=1):
         rv = text_values(len(rs), question_seconds(project, rnd), round=rnd["title"])
@@ -1515,18 +1537,18 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         chapters_at[len(timeline)] = rnd["title"] or f"Тур {k}"
         rules = fmt(rnd["rules"], **rv)
         narration = fmt(rnd.get("narration") or "", **rv) or "\n".join(p for p in (rnd["title"], rules) if p)
-        add_card("round", (rnd["title"], rules, 8), narration, music=True)
+        add_card("round", (rnd["title"], rules, 8), narration, rnd.get("music", ""))
         for qn, i in idx:
             audio = np.concatenate([np.zeros((gap_frames * SAMPLES_PER_FRAME, 2), dtype=np.float32), fragments[i][0]])
             timeline.append(("question", gap_frames + rows[i]["q_frames"], audio, (i, dict(rv, n=qn))))
         card = (fmt(texts["answers_title"], **rv), fmt(texts["answers_subtitle"], **rv))
         chapters_at[len(timeline)] = card[0] or f"Ответы · {rnd['title'] or f'Тур {k}'}"
-        add_card("answers_card", card, fmt(texts["answers_narration"], **rv), music=True)
+        add_card("answers_card", card, fmt(texts["answers_narration"], **rv), rnd.get("music", ""))
         for qn, i in idx:
             audio = answer_audio(*fragments[i][1:])
             timeline.append(("answer", a_frames + gap_frames, audio, (i, dict(rv, n=qn))))
     if not round_id:
-        add_card("outro", outro, fmt(texts["outro_narration"], **vals), music=True)
+        add_card("outro", outro, fmt(texts["outro_narration"], **vals), project["outro_music"])
     total_frames = sum(seg[1] for seg in timeline)
     log(f"Квиз: {n} {plural(n, 'песня', 'песни', 'песен')}, видео {fmt_ts(total_frames / FPS)}, "
         f"{renderer.W}x{renderer.H}")
