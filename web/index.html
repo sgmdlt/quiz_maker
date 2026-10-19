@@ -718,7 +718,8 @@ function renderRounds() {
     <div class="row"><input id="roundTitle" value="${esc(cur.title)}" placeholder="Название тура (пусто — без заставки тура)" aria-label="Название тура">
       <label class="unit" title="Секунд на вопрос в этом туре. Пусто — как в «Оформлении»"><input type="number" min="1" step="1" id="roundSeconds" style="width:90px" value="${cur.seconds ?? ""}" placeholder="${P().timing.question}" aria-label="Секунд на вопрос"></label>
       ${P().rounds.length > 1 ? `<button class="btn small ghost" id="delRound">Удалить тур</button>` : ""}</div>
-    <textarea id="roundRules" placeholder="Правила тура — показываются на его заставке" aria-label="Правила тура">${esc(cur.rules)}</textarea>`;
+    <textarea id="roundRules" placeholder="Правила тура — показываются на его заставке" aria-label="Правила тура">${esc(cur.rules)}</textarea>
+    <textarea id="roundNarration" placeholder="Текст для диктора — пусто: читает название и правила" aria-label="Текст для диктора">${esc(cur.narration || "")}</textarea>`;
   $$("#rounds [data-round]").forEach(b => b.onclick = () => { S.round = b.dataset.round; renderRounds(); renderTracksList(); showRoundPreview(); });
   $("#addRound").onclick = () => {
     const r = { id: Math.random().toString(16).slice(2, 10), title: `Тур ${P().rounds.length + 1}`, rules: "" };
@@ -734,7 +735,7 @@ function renderRounds() {
   };
   const onEdit = () => {
     const r = curRound();  // не cur: опрос сервера заменяет P() новым объектом
-    r.title = $("#roundTitle").value; r.rules = $("#roundRules").value;
+    r.title = $("#roundTitle").value; r.rules = $("#roundRules").value; r.narration = $("#roundNarration").value;
     $(`#rounds [data-round="${r.id}"]`).textContent = r.title || "Тур";
     saveProject("rounds", P().rounds);
   };
@@ -746,6 +747,7 @@ function renderRounds() {
   });
   $("#roundTitle").addEventListener("input", onEdit);
   $("#roundRules").addEventListener("input", onEdit);
+  $("#roundNarration").addEventListener("input", onEdit);
   $("#roundTitle").addEventListener("focus", showRoundPreview);
   $("#roundRules").addEventListener("focus", showRoundPreview);
 }
@@ -1191,19 +1193,22 @@ function pickFile(accept, cb, multiple = false) {
 
 /* ───────────── тексты ───────────── */
 const TEXT_GROUPS = [
-  ["Заставка квиза", "intro", [["intro_title", "Заголовок"], ["intro_subtitle", "Приветствие, вступление", true]], "Пустой заголовок — заставки не будет. Название и правила каждого тура — во вкладке «Треки»."],
+  ["Заставка квиза", "intro", [["intro_title", "Заголовок"], ["intro_subtitle", "Приветствие, вступление", true],
+    ["intro_narration", "Текст для диктора", true, "Пусто — диктор читает заголовок и приветствие"]], "Пустой заголовок — заставки не будет. Название и правила каждого тура — во вкладке «Треки»."],
   ["Вопрос", "question", [["question_label", "Плашка сверху"], ["prompt", "Надпись под кольцом"]], "Подсказка для конкретного трека задаётся во вкладке «Треки»."],
-  ["Перед ответами тура", "answers", [["answers_title", "Заголовок"], ["answers_subtitle", "Подзаголовок"]], "Показывается в конце каждого тура, {round} — его название. Пустой заголовок — экрана не будет, ответы пойдут сразу."],
+  ["Перед ответами тура", "answers", [["answers_title", "Заголовок"], ["answers_subtitle", "Подзаголовок"],
+    ["answers_narration", "Текст для диктора", true, "Пусто — без озвучки. Можно {round}"]], "Показывается в конце каждого тура, {round} — его название. Пустой заголовок — экрана не будет, ответы пойдут сразу."],
   ["Ответ", "answer", [["answer_label", "Плашка сверху"]], "Название, исполнитель, альбом и год берутся из треков."],
-  ["Финал", "outro", [["outro_title", "Заголовок"], ["outro_subtitle", "Подзаголовок"]], "Пустой заголовок — финального экрана не будет."],
+  ["Финал", "outro", [["outro_title", "Заголовок"], ["outro_subtitle", "Подзаголовок"],
+    ["outro_narration", "Текст для диктора", true, "Пусто — без озвучки. Например, куда писать и где подписаться"]], "Пустой заголовок — финального экрана не будет."],
 ];
 function renderTexts() {
   const ph = Object.entries(S.boot.placeholders).map(([k, v]) => `<code>${esc(k)}</code> — ${esc(v)}`).join(", ");
   $("#main").innerHTML = `<div class="section"><h2>Тексты</h2>
     <p class="lead">Подстановки: ${ph}. Пока вы печатаете, справа показывается этот экран.</p></div>` +
     TEXT_GROUPS.map(([title, screen, fields, note]) => `<div class="section"><h3>${title}</h3><div class="grid-2">
-      ${fields.map(([k, lbl, long]) => `<label class="field"${long ? ` style="grid-column:1/-1"` : ""}><span>${lbl}</span>${long ?
-        `<textarea rows="4" data-text="${k}" data-screen="${screen}" placeholder="${esc(S.boot.defaults.texts[k])}">${esc(P().texts[k])}</textarea>` :
+      ${fields.map(([k, lbl, long, ph]) => `<label class="field"${long ? ` style="grid-column:1/-1"` : ""}><span>${lbl}</span>${long ?
+        `<textarea rows="4" data-text="${k}" data-screen="${screen}" placeholder="${esc(ph ?? S.boot.defaults.texts[k])}">${esc(P().texts[k])}</textarea>` :
         `<input data-text="${k}" data-screen="${screen}" value="${esc(P().texts[k])}" placeholder="${esc(S.boot.defaults.texts[k])}">`}</label>`).join("")}
       </div><p class="hint">${note}</p></div>`).join("");
   $$("[data-text]").forEach(inp => {

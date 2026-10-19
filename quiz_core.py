@@ -81,6 +81,10 @@ DEFAULT_PROJECT = {
         "answer_label": "Ответ {n} из {total}",
         "outro_title": "Сколько угадали?",
         "outro_subtitle": "Напишите свой счёт в комментариях",
+        # текст для диктора: на заставке пусто — читается текст слайда, на «Ответах» и финале — тишина
+        "intro_narration": "",
+        "answers_narration": "",
+        "outro_narration": "",
     },
     "fonts": {"heading": "", "text": ""},   # путь к шрифту, для вариативного — «путь#Bold»
     "style": {
@@ -1432,15 +1436,16 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     def card_frames(key, title):  # пустой заголовок или нулевая длительность — экрана нет
         return frames_for(timing[key]) if timing[key] > 0 and title else 0
 
-    def add_card(key, card, speak=False):
+    def add_card(key, card, narration="", music=False):
+        """narration — что читает диктор; экран держится, пока он не дочитает."""
         frames, audio = card_frames(key, card[0]), None
         if not frames:
             return
-        if speak and project["voice"]:  # экран держится, пока диктор не дочитает
+        if narration.strip() and project["voice"]:
             lead = np.zeros((round(0.4 * SAMPLE_RATE), 2), dtype=np.float32)
-            audio = np.concatenate([lead, speech(ws, project["voice"], "\n".join(p for p in card[:2] if p))])
+            audio = np.concatenate([lead, speech(ws, project["voice"], narration)])
             frames = max(frames, frames_for(len(audio) / SAMPLE_RATE + 1))
-        if speak and project["music"]:  # фоновая музыка под голосом, каждый раз с начала
+        if music and project["music"]:  # фоновая музыка под голосом, каждый раз с начала
             n = frames * SAMPLES_PER_FRAME
             bed = with_fades(extract_fragment(ws.resolve(project["music"]), 0, n), 0.5, 1.5)
             bed *= float(project["music_volume"])
@@ -1501,25 +1506,27 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     chapters_at = {}  # номер сегмента → глава в описании
     log("Озвучиваю заставки…" if project["voice"] else "Собираю сценарий…")
     if not round_id:
-        add_card("intro", intro, speak=True)
+        add_card("intro", intro, fmt(texts["intro_narration"], **vals) or "\n".join(intro[:2]), music=True)
     first = 0
     for k, (rnd, rs) in enumerate(rounds, start=1):
         rv = text_values(len(rs), question_seconds(project, rnd), round=rnd["title"])
         idx = list(enumerate(range(first, first + len(rs)), start=1))
         first += len(rs)
         chapters_at[len(timeline)] = rnd["title"] or f"Тур {k}"
-        add_card("round", (rnd["title"], fmt(rnd["rules"], **rv), 8), speak=True)
+        rules = fmt(rnd["rules"], **rv)
+        narration = fmt(rnd.get("narration") or "", **rv) or "\n".join(p for p in (rnd["title"], rules) if p)
+        add_card("round", (rnd["title"], rules, 8), narration, music=True)
         for qn, i in idx:
             audio = np.concatenate([np.zeros((gap_frames * SAMPLES_PER_FRAME, 2), dtype=np.float32), fragments[i][0]])
             timeline.append(("question", gap_frames + rows[i]["q_frames"], audio, (i, dict(rv, n=qn))))
         card = (fmt(texts["answers_title"], **rv), fmt(texts["answers_subtitle"], **rv))
         chapters_at[len(timeline)] = card[0] or f"Ответы · {rnd['title'] or f'Тур {k}'}"
-        add_card("answers_card", card)
+        add_card("answers_card", card, fmt(texts["answers_narration"], **rv))
         for qn, i in idx:
             audio = answer_audio(*fragments[i][1:])
             timeline.append(("answer", a_frames + gap_frames, audio, (i, dict(rv, n=qn))))
     if not round_id:
-        add_card("outro", outro)
+        add_card("outro", outro, fmt(texts["outro_narration"], **vals))
     total_frames = sum(seg[1] for seg in timeline)
     log(f"Квиз: {n} {plural(n, 'песня', 'песни', 'песен')}, видео {fmt_ts(total_frames / FPS)}, "
         f"{renderer.W}x{renderer.H}")
