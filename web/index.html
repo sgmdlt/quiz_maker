@@ -1277,6 +1277,12 @@ function renderLook() {
           <span class="row"><select id="bgPick" style="flex:1"><option value="">Без картинки — градиент</option>
             ${lib.image.map(f => `<option value="${esc(f)}" ${f === st.background ? "selected" : ""}>${esc(f.split("/").pop())}</option>`).join("")}</select>
             <button class="btn small" id="bgUpload">Загрузить…</button></span></label>
+        <label class="field"><span>Фоновая музыка на заставках квиза и туров</span>
+          <span class="row"><select id="musicPick" style="flex:1"><option value="">Без музыки</option>
+            ${lib.music.map(f => `<option value="${esc(f)}" ${f === p.music ? "selected" : ""}>${esc(f.split("/").pop())}</option>`).join("")}</select>
+            <button class="btn small" id="musicUpload">Загрузить…</button></span></label>
+        <label class="field"><span>Громкость музыки под голосом: <b id="musicVolVal">${Math.round(p.music_volume * 100)}%</b></span>
+          <input type="range" id="musicVol" min="0" max="1" step="0.05" value="${p.music_volume}"></label>
         <label class="field"><span>Голос для заставок квиза и туров (читает заголовок и текст)</span>
           <select id="voice"><option value="">Без озвучки</option>${Object.entries(S.boot.voices).map(([k, n]) => `<option value="${k}" ${k === p.voice ? "selected" : ""}>${n}</option>`).join("")}</select></label>
         <label class="field"><span>Страна магазина iTunes для поиска обложек</span>
@@ -1314,6 +1320,13 @@ function renderLook() {
   $("#online").onchange = e => saveProject("covers.online", e.target.checked, { now: true });
   $("#itunes").onchange = e => saveProject("covers.itunes_country", e.target.value, { now: true });
   $("#voice").onchange = e => saveProject("voice", e.target.value, { now: true });
+  $("#musicPick").onchange = e => saveProject("music", e.target.value, { now: true });
+  $("#musicVol").oninput = e => { $("#musicVolVal").textContent = Math.round(e.target.value * 100) + "%"; saveProject("music_volume", Number(e.target.value)); };
+  $("#musicUpload").onclick = () => pickFile("audio/*,.mp3,.m4a,.flac,.wav,.ogg,.opus", async ([f]) => {
+    try { const r = await api("POST", `/api/upload?kind=music&name=${encodeURIComponent(f.name)}`, undefined, f);
+      S.d.library.music = [...new Set([...S.d.library.music, r.path])]; saveProject("music", r.path, { now: true }); renderLook(); }
+    catch (e) { fail(e); }
+  });
 
   for (const row of $$(".font-row")) {
     const role = row.dataset.role, pathSel = $("[data-font-path]", row), styleSel = $("[data-font-style]", row);
@@ -1434,7 +1447,9 @@ function renderBuild() {
       <div class="row">
         <span class="row" style="gap:6px">
           <button class="btn" id="buildTest" ${running || blocking.length || !on ? "disabled" : ""}>Пробный ролик</button>
-          <span class="hint">из первых</span>
+          <select id="testRound" aria-label="Из какого тура"><option value="">из всех туров</option>
+            ${p.rounds.map((r, i) => `<option value="${r.id}" ${r.id === store.get("testRound", "") ? "selected" : ""}>из тура «${esc(r.title || `Тур ${i + 1}`)}»</option>`).join("")}</select>
+          <span class="hint">первые</span>
           <input type="number" id="limit" value="${store.get("limit", 2)}" min="1" max="${Math.max(1, on)}" style="width:58px" aria-label="Сколько песен в пробном ролике">
         </span>
         <button class="btn primary" id="buildAll" ${running || blocking.length || !on ? "disabled" : ""}>Собрать видео</button>
@@ -1462,7 +1477,7 @@ function renderBuild() {
   updateBuildProgress();
   $("#shuffle").onchange = e => saveProject("shuffle", e.target.checked, { now: true });
   $("#limit").oninput = e => store.set("limit", Math.max(1, parseInt(e.target.value, 10) || 1));
-  $("#buildTest").onclick = () => startBuild(Math.max(1, parseInt($("#limit").value, 10) || 2));
+  $("#buildTest").onclick = () => startBuild(Math.max(1, parseInt($("#limit").value, 10) || 2), $("#testRound").value);
   $("#buildAll").onclick = () => startBuild(null);
   if ($("#buildStop")) $("#buildStop").onclick = () => cancelJob("build");
   $("#sheetBtn").onclick = () => startJob("sheet").then(renderBuild);
@@ -1476,10 +1491,11 @@ function renderBuild() {
     if (li) { li.scrollIntoView({ block: "center" }); li.classList.add("flash"); }
   });
 }
-async function startBuild(limit) {
+async function startBuild(limit, round) {
   if (limit) store.set("limit", limit);
+  if (round !== undefined) store.set("testRound", round);
   stopPlayback();
-  await startJob("build", limit ? { limit } : {});
+  await startJob("build", limit ? { limit, round } : {});
   renderBuild();
 }
 function updateBuildProgress() {
