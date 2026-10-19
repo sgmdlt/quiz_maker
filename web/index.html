@@ -719,7 +719,8 @@ function renderRounds() {
       <label class="unit" title="Секунд на вопрос в этом туре. Пусто — как в «Оформлении»"><input type="number" min="1" step="1" id="roundSeconds" style="width:90px" value="${cur.seconds ?? ""}" placeholder="${P().timing.question}" aria-label="Секунд на вопрос"></label>
       ${P().rounds.length > 1 ? `<button class="btn small ghost" id="delRound">Удалить тур</button>` : ""}</div>
     <textarea id="roundRules" placeholder="Правила тура — показываются на его заставке" aria-label="Правила тура">${esc(cur.rules)}</textarea>
-    <textarea id="roundNarration" placeholder="Текст для диктора — пусто: читает название и правила" aria-label="Текст для диктора">${esc(cur.narration || "")}</textarea>`;
+    <textarea id="roundNarration" placeholder="Текст для диктора — пусто: читает название и правила" aria-label="Текст для диктора">${esc(cur.narration || "")}</textarea>
+    <label class="field"><span>Фоновая музыка тура — на правилах и «Ответах»</span>${musicField("roundMusic", cur.music)}</label>`;
   $$("#rounds [data-round]").forEach(b => b.onclick = () => { S.round = b.dataset.round; renderRounds(); renderTracksList(); showRoundPreview(); });
   $("#addRound").onclick = () => {
     const r = { id: Math.random().toString(16).slice(2, 10), title: `Тур ${P().rounds.length + 1}`, rules: "" };
@@ -748,6 +749,7 @@ function renderRounds() {
   $("#roundTitle").addEventListener("input", onEdit);
   $("#roundRules").addEventListener("input", onEdit);
   $("#roundNarration").addEventListener("input", onEdit);
+  bindMusic("roundMusic", v => { curRound().music = v; saveProject("rounds", P().rounds); });
   $("#roundTitle").addEventListener("focus", showRoundPreview);
   $("#roundRules").addEventListener("focus", showRoundPreview);
 }
@@ -1202,6 +1204,16 @@ const TEXT_GROUPS = [
   ["Финал", "outro", [["outro_title", "Заголовок"], ["outro_subtitle", "Подзаголовок"],
     ["outro_narration", "Текст для диктора", true, "Пусто — без озвучки. Например, куда писать и где подписаться"]], "Пустой заголовок — финального экрана не будет."],
 ];
+// фоновая музыка: ссылка на YouTube (начало из ?t=) или загруженный файл
+const musicField = (id, value) => `<span class="row"><input id="${id}" style="flex:1" value="${esc(value || "")}" placeholder="Ссылка на YouTube или файл — пусто: без музыки">
+  <button class="btn small" data-music-file="${id}">Файл…</button></span>`;
+function bindMusic(id, save) {
+  $("#" + id).addEventListener("input", e => save(e.target.value.trim()));
+  $(`[data-music-file="${id}"]`).onclick = () => pickFile("audio/*,.mp3,.m4a,.flac,.wav,.ogg,.opus", async ([f]) => {
+    try { const r = await api("POST", `/api/upload?kind=music&name=${encodeURIComponent(f.name)}`, undefined, f); $("#" + id).value = r.path; save(r.path); }
+    catch (e) { fail(e); }
+  });
+}
 function renderTexts() {
   const ph = Object.entries(S.boot.placeholders).map(([k, v]) => `<code>${esc(k)}</code> — ${esc(v)}`).join(", ");
   $("#main").innerHTML = `<div class="section"><h2>Тексты</h2>
@@ -1210,7 +1222,12 @@ function renderTexts() {
       ${fields.map(([k, lbl, long, ph]) => `<label class="field"${long ? ` style="grid-column:1/-1"` : ""}><span>${lbl}</span>${long ?
         `<textarea rows="4" data-text="${k}" data-screen="${screen}" placeholder="${esc(ph ?? S.boot.defaults.texts[k])}">${esc(P().texts[k])}</textarea>` :
         `<input data-text="${k}" data-screen="${screen}" value="${esc(P().texts[k])}" placeholder="${esc(S.boot.defaults.texts[k])}">`}</label>`).join("")}
-      </div><p class="hint">${note}</p></div>`).join("");
+      </div><p class="hint">${note}</p></div>`).join("") + `<div class="section"><h3>Фоновая музыка</h3><div class="grid-2">
+      <label class="field"><span>Под заставкой квиза</span>${musicField("introMusic", P().intro_music)}</label>
+      <label class="field"><span>Под финалом</span>${musicField("outroMusic", P().outro_music)}</label>
+      </div><p class="hint">Музыка тура (под его правилами и «Ответами») задаётся во вкладке «Треки». Громкость — в «Оформлении».</p></div>`;
+  bindMusic("introMusic", v => saveProject("intro_music", v));
+  bindMusic("outroMusic", v => saveProject("outro_music", v));
   $$("[data-text]").forEach(inp => {
     inp.addEventListener("input", () => saveProject("texts." + inp.dataset.text, inp.value));
     inp.addEventListener("focus", () => showPreview(inp.dataset.screen));
@@ -1282,11 +1299,7 @@ function renderLook() {
           <span class="row"><select id="bgPick" style="flex:1"><option value="">Без картинки — градиент</option>
             ${lib.image.map(f => `<option value="${esc(f)}" ${f === st.background ? "selected" : ""}>${esc(f.split("/").pop())}</option>`).join("")}</select>
             <button class="btn small" id="bgUpload">Загрузить…</button></span></label>
-        <label class="field"><span>Фоновая музыка: заставка, правила туров, «Ответы», финал</span>
-          <span class="row"><select id="musicPick" style="flex:1"><option value="">Без музыки</option>
-            ${lib.music.map(f => `<option value="${esc(f)}" ${f === p.music ? "selected" : ""}>${esc(f.split("/").pop())}</option>`).join("")}</select>
-            <button class="btn small" id="musicUpload">Загрузить…</button></span></label>
-        <label class="field"><span>Громкость музыки под голосом: <b id="musicVolVal">${Math.round(p.music_volume * 100)}%</b></span>
+        <label class="field"><span>Громкость фоновой музыки под голосом (сама музыка — в «Текстах» и у каждого тура): <b id="musicVolVal">${Math.round(p.music_volume * 100)}%</b></span>
           <input type="range" id="musicVol" min="0" max="1" step="0.05" value="${p.music_volume}"></label>
         <label class="field"><span>Голос для заставок квиза и туров (читает заголовок и текст)</span>
           <select id="voice"><option value="">Без озвучки</option>${Object.entries(S.boot.voices).map(([k, n]) => `<option value="${k}" ${k === p.voice ? "selected" : ""}>${n}</option>`).join("")}</select></label>
@@ -1325,13 +1338,8 @@ function renderLook() {
   $("#online").onchange = e => saveProject("covers.online", e.target.checked, { now: true });
   $("#itunes").onchange = e => saveProject("covers.itunes_country", e.target.value, { now: true });
   $("#voice").onchange = e => saveProject("voice", e.target.value, { now: true });
-  $("#musicPick").onchange = e => saveProject("music", e.target.value, { now: true });
   $("#musicVol").oninput = e => { $("#musicVolVal").textContent = Math.round(e.target.value * 100) + "%"; saveProject("music_volume", Number(e.target.value)); };
-  $("#musicUpload").onclick = () => pickFile("audio/*,.mp3,.m4a,.flac,.wav,.ogg,.opus", async ([f]) => {
-    try { const r = await api("POST", `/api/upload?kind=music&name=${encodeURIComponent(f.name)}`, undefined, f);
-      S.d.library.music = [...new Set([...S.d.library.music, r.path])]; saveProject("music", r.path, { now: true }); renderLook(); }
-    catch (e) { fail(e); }
-  });
+
 
   for (const row of $$(".font-row")) {
     const role = row.dataset.role, pathSel = $("[data-font-path]", row), styleSel = $("[data-font-style]", row);
