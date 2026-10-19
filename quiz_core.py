@@ -1521,12 +1521,12 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
             timeline.append(("question", gap_frames + rows[i]["q_frames"], audio, (i, dict(rv, n=qn))))
         card = (fmt(texts["answers_title"], **rv), fmt(texts["answers_subtitle"], **rv))
         chapters_at[len(timeline)] = card[0] or f"Ответы · {rnd['title'] or f'Тур {k}'}"
-        add_card("answers_card", card, fmt(texts["answers_narration"], **rv))
+        add_card("answers_card", card, fmt(texts["answers_narration"], **rv), music=True)
         for qn, i in idx:
             audio = answer_audio(*fragments[i][1:])
             timeline.append(("answer", a_frames + gap_frames, audio, (i, dict(rv, n=qn))))
     if not round_id:
-        add_card("outro", outro, fmt(texts["outro_narration"], **vals))
+        add_card("outro", outro, fmt(texts["outro_narration"], **vals), music=True)
     total_frames = sum(seg[1] for seg in timeline)
     log(f"Квиз: {n} {plural(n, 'песня', 'песни', 'песен')}, видео {fmt_ts(total_frames / FPS)}, "
         f"{renderer.W}x{renderer.H}")
