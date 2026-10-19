@@ -35,6 +35,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   `timing.intro`/`timing.round`, заставка удлиняется. Под озвучку можно подложить фоновую музыку
   (`project.music`, файлы в `library/music/`, громкость `music_volume`); каждая заставка
   запускает её с начала (`add_card` в `build`).
+  Текст для диктора отделён от текста слайда: `texts.intro_narration`, `round.narration`,
+  `texts.answers_narration`, `texts.outro_narration` (с подстановками). На заставке квиза и туров
+  пустое поле означает, что читается текст слайда; на «Ответах» и финале — что озвучки нет.
+  Музыка играет только на заставке квиза и туров.
 - **Переносы строк:** текстовые поля трека в интерфейсе — `textarea.ml`, Enter переносит строку.
   `wrap_text` учитывает `\n` на слайдах, `track_label` для описания заменяет `\n` на «, ».
 - **Вопрос:** круговой аудио-визуализатор по настоящему FFT отрывка (`spectrum_ring.py`), это
