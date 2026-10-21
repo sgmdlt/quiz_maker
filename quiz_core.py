@@ -96,6 +96,8 @@ DEFAULT_PROJECT = {
         "text": "#FFFFFF",
         "muted": "#CFC6E8",
         "accent": "#FFC83D",
+        "answer_text": "#FFFFFF",     # слайд ответа: фон — обложка, поэтому цвета свои
+        "answer_muted": "#CFC6E8",
         "background": "",             # картинка для фона вместо градиента
         "cover_backdrop": True,       # фон экрана ответа — размытая обложка
     },
@@ -790,7 +792,7 @@ class Renderer:
         glow = ImageOps.invert(Image.radial_gradient("L")).resize((W, H)).point(lambda v: v * 45 // 100)
         return Image.composite(Image.new("RGB", (W, H), self.c("glow")), bg, glow)
 
-    def _header(self, img, text):
+    def _header(self, img, text, color="muted"):
         if not text:
             return self.H * 0.04
         font = self.tf(self.u * 0.045)
@@ -803,7 +805,7 @@ class Renderer:
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         ImageDraw.Draw(overlay).rounded_rectangle(box, radius=(box[3] - box[1]) / 2, fill=(255, 255, 255, 38))
         img.paste(overlay, (0, 0), overlay)
-        d.text((self.cx, cy), text, font=font, fill=self.c("muted"), anchor="mm")
+        d.text((self.cx, cy), text, font=font, fill=self.c(color), anchor="mm")
         return box[3]
 
     def _equalizer(self, d, bottom, color):
@@ -910,14 +912,14 @@ class Renderer:
         song = " — ".join(p for p in (artist_line, row["title"]) if p) if row.get("answer") else row["title"]
         blocks = []
         font, lines = fit_text(d, answer or " ", max_w, self.u * 0.08, self.u * 0.045, 3, self.hf)
-        blocks.append((font, lines, self.c("text"), 0))
+        blocks.append((font, lines, self.c("answer_text"), 0))
         if song and song != answer:
             font, lines = fit_text(d, song, max_w, self.u * 0.055, self.u * 0.035, 2, self.tf)
             blocks.append((font, lines, self.c("accent"), self.u * 0.015))
         release = " · ".join(p for p in (row.get("album", ""), str(row.get("year", ""))) if p)
         if release:
             font, lines = fit_text(d, release, max_w, self.u * 0.04, self.u * 0.03, 2, self.tf)
-            blocks.append((font, lines, self.c("muted"), self.u * 0.025))
+            blocks.append((font, lines, self.c("answer_muted"), self.u * 0.025))
         return blocks
 
     def answer_card(self, label, row):
@@ -928,7 +930,7 @@ class Renderer:
             except Exception:
                 cover = None
         img = self._backdrop(cover) if cover is not None and self.style.get("cover_backdrop") else self.bg.copy()
-        header_bottom = self._header(img, label)
+        header_bottom = self._header(img, label, "answer_muted")
         d = ImageDraw.Draw(img)
         gap = int(self.u * 0.06)
         horizontal = self.W >= self.H
@@ -966,7 +968,7 @@ def ring_config(project):
 def make_renderer(ws, project, size=None):
     W, H = size or ((1080, 1920) if project["format"] == "vertical" else (1920, 1080))
     style = project["style"]
-    for key in ("bg_top", "bg_bottom", "glow", "text", "muted", "accent"):
+    for key in ("bg_top", "bg_bottom", "glow", "text", "muted", "accent", "answer_text", "answer_muted"):
         try:
             ImageColor.getrgb(style[key])
         except (ValueError, KeyError):
