@@ -1197,6 +1197,8 @@ function pickFile(accept, cb, multiple = false) {
 const TEXT_GROUPS = [
   ["Заставка квиза", "intro", [["intro_title", "Заголовок"], ["intro_subtitle", "Приветствие, вступление", true],
     ["intro_narration", "Текст для диктора", true, "Пусто — диктор читает заголовок и приветствие"]], "Пустой заголовок — заставки не будет. Название и правила каждого тура — во вкладке «Треки»."],
+  ["Список туров", "rounds", [["rounds_narration", "Текст для диктора", true, "Пусто — диктор читает список туров"]],
+    "Идёт после заставки: номера и названия туров из вкладки «Треки». Музыка — как у заставки. Длительность 0 во вкладке «Оформление» — слайда не будет."],
   ["Вопрос", "question", [["question_label", "Плашка сверху"], ["prompt", "Надпись под кольцом"]], "Подсказка для конкретного трека задаётся во вкладке «Треки»."],
   ["Перед ответами тура", "answers", [["answers_title", "Заголовок"], ["answers_subtitle", "Подзаголовок"],
     ["answers_narration", "Текст для диктора", true, "Пусто — без озвучки. Можно {round}"]], "Показывается в конце каждого тура, {round} — его название. Пустой заголовок — экрана не будет, ответы пойдут сразу."],
@@ -1275,7 +1277,7 @@ function renderLook() {
     </div>
     <div class="section"><h3>Длительность, секунды</h3>
       <div class="timing">
-        ${[["question", "Вопрос (отрывок)"], ["answer", "Ответ"], ["gap", "Пауза после вопроса и ответа"], ["intro", "Заставка квиза"], ["round", "Заставка тура"], ["answers_card", "Экран «Ответы»"], ["outro", "Финал"]].map(([k, l]) =>
+        ${[["question", "Вопрос (отрывок)"], ["answer", "Ответ"], ["gap", "Пауза после вопроса и ответа"], ["intro", "Заставка квиза"], ["rounds", "Список туров"], ["round", "Заставка тура"], ["answers_card", "Экран «Ответы»"], ["outro", "Финал"]].map(([k, l]) =>
           `<label class="field"><span>${l}</span><span class="unit"><input type="number" min="0" step="0.5" data-timing="${k}" value="${tm[k]}"></span></label>`).join("")}
       </div>
       <div class="row" style="margin-top:14px"><span class="hint" style="margin-right:6px">Звук на ответе:</span>
@@ -1442,7 +1444,7 @@ function buildProblems() {
 function renderBuild() {
   const p = P(), tm = p.timing;
   const on = p.tracks.filter(t => t.enabled).length;
-  const total = (p.texts.intro_title ? tm.intro : 0) + on * (tm.question + tm.answer) + (p.texts.answers_title ? tm.answers_card : 0) + (p.texts.outro_title ? tm.outro : 0);
+  const total = (p.texts.intro_title ? tm.intro : 0) + tm.rounds + on * (tm.question + tm.answer) + (p.texts.answers_title ? tm.answers_card : 0) + (p.texts.outro_title ? tm.outro : 0);
   const problems = buildProblems();
   const blocking = problems.filter(([, , soft]) => !soft);
   const job = S.d.jobs.build, running = job?.state === "running";
@@ -1526,7 +1528,7 @@ function updateBuildProgress() {
 }
 
 /* ───────────── предпросмотр ───────────── */
-const PV = [["intro", "Заставка"], ["round", "Тур"], ["reveal", "Появление"], ["question", "Вопрос"], ["answers", "«Ответы»"], ["answer", "Ответ"], ["outro", "Финал"]];
+const PV = [["intro", "Заставка"], ["rounds", "Туры"], ["round", "Тур"], ["reveal", "Появление"], ["question", "Вопрос"], ["answers", "«Ответы»"], ["answer", "Ответ"], ["outro", "Финал"]];
 function renderPreviewPanel() {
   const im = S.pv.images, v = S.pv.version;
   $("#pvThumbs").classList.toggle("vertical", P().format === "vertical");

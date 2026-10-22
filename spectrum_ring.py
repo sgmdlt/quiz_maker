@@ -306,6 +306,32 @@ class SpectrumRing:
         img.paste((0, 0, 0), (x0, y0), disc.reduce(ss))
         img.paste((255, 255, 255), (x0, y0), track.reduce(ss))
 
+    def draw_sun(self, frame, center):
+        """Логотип: верхняя половина кольца — лучи-столбики над закрашенным полукругом.
+        center — середина основания полукруга."""
+        ss = self.ss
+        S = self.size * ss
+        c = S / 2
+        mask = Image.new("L", (S, S), 0)
+        d = ImageDraw.Draw(mask)
+        w = self.bar_w * ss
+        half, width = w / 2, max(1, round(w))
+        rb = self.r_in * 0.5 * ss  # дуга вместо диска
+        d.arc((c - rb, c - rb, c + rb, c + rb), 180, 360, fill=255, width=width)
+        r0 = self.r_in * 0.7 * ss
+        room = self.visual_radius * ss - r0
+        lengths = room * np.random.default_rng(7).uniform(0.35, 1.0, self.n_bars)  # «случайные», но одинаковые в каждом кадре
+        for i in np.nonzero(self.cos > 0.05)[0]:
+            r1 = r0 + lengths[i]
+            sx, cy = self.sin[i], self.cos[i]
+            x0, y0, x1, y1 = c + r0 * sx, c - r0 * cy, c + r1 * sx, c - r1 * cy
+            d.line((x0, y0, x1, y1), fill=255, width=width)
+            d.ellipse((x1 - half, y1 - half, x1 + half, y1 + half), fill=255)
+        if ss > 1:
+            mask = mask.reduce(ss)
+        x0, y0, _, _ = self.box(center)
+        frame.paste(self.color_layer, (x0, y0), mask)
+
     # --- кадр ---
 
     def arc_window(self, t, duration, pre=0.0):

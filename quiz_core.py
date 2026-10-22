@@ -38,7 +38,7 @@ import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 from covers import CoverFinder
-from spectrum_ring import SpectrumRing, analyze, config_from_dict
+from spectrum_ring import RingConfig, SpectrumRing, analyze, config_from_dict
 
 ROOT = Path(os.environ.get("QUIZ_HOME") or Path(__file__).resolve().parent)
 
@@ -65,7 +65,7 @@ DEFAULT_PROJECT = {
     "version": 1,
     "name": "Новый квиз",
     "format": "horizontal",           # horizontal (1920x1080) | vertical (1080x1920, Shorts)
-    "timing": {"question": 10, "answer": 6, "gap": 2, "intro": 3, "round": 6, "answers_card": 3, "outro": 4},
+    "timing": {"question": 10, "answer": 6, "gap": 2, "intro": 3, "rounds": 4, "round": 6, "answers_card": 3, "outro": 4},
     "voice": "ru-RU-DmitryNeural",    # голос для заставок квиза и туров (VOICES), "" — без озвучки
     # фоновая музыка: путь к файлу или ссылка (YouTube, начало из ?t=); у тура своя — round["music"]
     "intro_music": "",
@@ -85,6 +85,7 @@ DEFAULT_PROJECT = {
         "outro_subtitle": "Напишите свой счёт в комментариях",
         # текст для диктора: на заставке пусто — читается текст слайда, на «Ответах» и финале — тишина
         "intro_narration": "",
+        "rounds_narration": "",
         "answers_narration": "",
         "outro_narration": "",
     },
@@ -739,8 +740,15 @@ def wrap_text(draw, text, font, max_w):
     return lines or [""]
 
 
+CJK_FONT = "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"  # fonts-noto-cjk
+CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uff00-\uffef]")
+
+
 def fit_text(draw, text, max_w, size, min_size, max_lines, font_fn):
-    """Подбирает размер шрифта и переносы, чтобы текст влез по ширине."""
+    """Подбирает размер шрифта и переносы, чтобы текст влез по ширине.
+    Поле с иероглифами или хангылем целиком рисуется шрифтом Noto Sans CJK."""
+    if CJK.search(text):
+        font_fn = lambda s: ImageFont.truetype(CJK_FONT, max(8, int(s)))
     size, min_size = int(size), int(min_size)
     while True:
         font = font_fn(size)
@@ -771,6 +779,7 @@ class Renderer:
         self.bg = self._background(background)
         self.ring = (SpectrumRing(ring_cfg, self.u, lambda s: fonts.get("heading", s))
                      if ring_cfg is not None else None)
+        self.sun = SpectrumRing(ring_cfg or RingConfig(), self.u * 0.5, self.hf)  # логотип на заставках
 
     def c(self, name):
         return ImageColor.getrgb(self.style[name])
@@ -808,30 +817,24 @@ class Renderer:
         d.text((self.cx, cy), text, font=font, fill=self.c(color), anchor="mm")
         return box[3]
 
-    def _equalizer(self, d, bottom, color):
-        heights = [0.35, 0.7, 1.0, 0.55, 0.85, 0.45, 0.65]
-        bw, gap, max_h = self.u * 0.04, self.u * 0.022, self.u * 0.14
-        x = self.cx - (len(heights) * bw + (len(heights) - 1) * gap) / 2
-        for h in heights:
-            d.rounded_rectangle((x, bottom - max_h * h, x + bw, bottom), radius=bw / 2, fill=color)
-            x += bw + gap
-
     def title_card(self, title, subtitle="", sub_max_lines=2):
         img = self.bg.copy()
         d = ImageDraw.Draw(img)
         max_w = self.W * 0.86
-        font, lines = fit_text(d, title or " ", max_w, self.u * 0.13, self.u * 0.06, 3, self.hf)
+        font, lines = fit_text(d, title, max_w, self.u * 0.13, self.u * 0.06, 3, self.hf) if title else (None, [])
         sub_font, sub_lines = (fit_text(d, subtitle, max_w, self.u * 0.055, self.u * 0.03, sub_max_lines, self.tf)
                                if subtitle else (None, []))
-        eq_h, gap = self.u * 0.14, self.u * 0.06
-        total = eq_h + gap + line_height(font) * len(lines)
+        eq_h, gap = self.sun.visual_radius, self.u * 0.06
+        total = eq_h + gap + (line_height(font) * len(lines) if lines else 0)
         if sub_lines:
-            total += gap * 0.4 + line_height(sub_font) * len(sub_lines)
+            total += (gap * 0.4 if lines else 0) + line_height(sub_font) * len(sub_lines)
         y = (self.H - total) / 2
-        self._equalizer(d, y + eq_h, self.c("accent"))
-        y = draw_lines(d, lines, font, self.cx, y + eq_h + gap, self.c("text"))
+        self.sun.draw_sun(img, (self.cx, y + eq_h))
+        y += eq_h + gap
+        if lines:
+            y = draw_lines(d, lines, font, self.cx, y, self.c("text")) + gap * 0.4
         if sub_lines:
-            draw_lines(d, sub_lines, sub_font, self.cx, y + gap * 0.4, self.c("muted"))
+            draw_lines(d, sub_lines, sub_font, self.cx, y, self.c("muted"))
         return img
 
     # --- вопрос ---
@@ -958,6 +961,12 @@ class Renderer:
         return img
 
 
+def rounds_card(project):
+    """Слайд со списком туров, без заголовка: «1. Название» построчно."""
+    rounds = project["rounds"]
+    return "", "\n".join(f"{k}. {r['title']}" for k, r in enumerate(rounds, 1)), len(rounds)
+
+
 def ring_config(project):
     try:
         return config_from_dict(project.get("visualizer") or {}, "визуализаторе")
@@ -1015,6 +1024,7 @@ _fragment_lock = threading.Lock()
 def speech(ws, voice, text):
     """Озвучка текста: голоса Microsoft через edge-tts (ru-RU-…) или Piper (ru_RU-…).
     Готовая речь кэшируется, громкость выравнивается так же, как у отрывков."""
+    text = re.sub(r"\+([аеёиоуыэюяАЕЁИОУЫЭЮЯ])", "\\1\u0301", text)  # «р+еперов» → знак ударения
     folder = ws.library / "voices"
     edge = voice.startswith("ru-RU-")
     out = folder / "speech" / f"{hashlib.sha1((voice + chr(10) + text).encode()).hexdigest()}.{'mp3' if edge else 'wav'}"
@@ -1335,6 +1345,7 @@ def preview(ws, slug, track_id=None, log=print):
     reveal_i = min(pre + q_frames - 1, int(reveal_s * FPS * 0.45))
     images = {
         "intro": r.title_card(fmt(texts["intro_title"], **vals), fmt(texts["intro_subtitle"], **vals), 8),
+        "rounds": r.title_card(*rounds_card(project)),
         "round": r.title_card(rnd["title"], fmt(rnd["rules"], **round_vals), 8),
         "reveal": r.question_frame(base, levels, reveal_i, q_frames, pre_frames=pre),
         "question": r.question_frame(base, levels, pre + int(q_frames * 0.55), q_frames, pre_frames=pre),
@@ -1460,9 +1471,9 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     def card_frames(key, title):  # пустой заголовок или нулевая длительность — экрана нет
         return frames_for(timing[key]) if timing[key] > 0 and title else 0
 
-    def add_card(key, card, narration="", music=""):
+    def add_card(key, card, narration="", music="", shown=None):
         """narration — что читает диктор (экран держится, пока он не дочитает), music — фоновая музыка."""
-        frames, audio = card_frames(key, card[0]), None
+        frames, audio = card_frames(key, card[0] if shown is None else shown), None
         if not frames:
             return
         if narration.strip() and project["voice"]:
@@ -1531,6 +1542,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     log("Озвучиваю заставки…" if project["voice"] else "Собираю сценарий…")
     if not round_id:
         add_card("intro", intro, fmt(texts["intro_narration"], **vals) or "\n".join(intro[:2]), project["intro_music"])
+        card = rounds_card(project)
+        add_card("rounds", card, fmt(texts["rounds_narration"], **vals) or card[1], project["intro_music"], card[1])
     first = 0
     for k, (rnd, rs) in enumerate(rounds, start=1):
         rv = text_values(len(rs), question_seconds(project, rnd), round=rnd["title"])
@@ -1618,7 +1631,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     # 6. Обложка для YouTube и текст описания с таймкодами
     progress(0.99, "Готовлю обложку и описание")
     thumb = out_dir / f"{stem}_thumbnail.jpg"
-    Renderer(1280, 720, project["style"], renderer.fonts,
+    Renderer(1280, 720, project["style"], renderer.fonts, ring_cfg,
              background=ws.resolve(project["style"].get("background"))).title_card(intro[0]).save(thumb, quality=92)
 
     desc_lines = [f"{intro[0]}!"] + ([intro[1]] if intro[1] else []) + [""]
