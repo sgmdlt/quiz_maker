@@ -47,7 +47,8 @@ SAMPLE_RATE = 44100
 SAMPLES_PER_FRAME = SAMPLE_RATE // FPS  # 1470 — звук и картинка совпадают до сэмпла
 FADE_FRAMES = 8                          # плавный переход между экранами (~0.27 с)
 LOUDNESS = -14                           # целевая громкость, LUFS (как у YouTube)
-SPLIT_PAUSE = 2.0                        # пауза между двумя фрагментами вопроса, с
+RENDER_THREADS = max(1, (os.cpu_count() or 2) // 2)  # потоки для кольца; остальное ядрам x264
+SPLIT_PAUSE = 1.0                        # пауза между двумя фрагментами вопроса, с
 
 
 class QuizError(Exception):
@@ -65,7 +66,7 @@ DEFAULT_PROJECT = {
     "version": 1,
     "name": "Новый квиз",
     "format": "horizontal",           # horizontal (1920x1080) | vertical (1080x1920, Shorts)
-    "timing": {"question": 10, "answer": 6, "gap": 2, "intro": 3, "rounds": 4, "round": 6, "answers_card": 3, "outro": 4},
+    "timing": {"question": 10, "answer": 6, "gap": 2, "answer_gap": 1, "intro": 3, "rounds": 4, "round": 6, "answers_card": 3, "outro": 4},
     "voice": "ru-RU-DmitryNeural",    # голос для заставок квиза и туров (VOICES), "" — без озвучки
     # фоновая музыка: путь к файлу или ссылка (YouTube, начало из ?t=); у тура своя — round["music"]
     "intro_music": "",
@@ -779,7 +780,7 @@ class Renderer:
         self.bg = self._background(background)
         self.ring = (SpectrumRing(ring_cfg, self.u, lambda s: fonts.get("heading", s))
                      if ring_cfg is not None else None)
-        self.sun = SpectrumRing(ring_cfg or RingConfig(), self.u * 0.5, self.hf)  # логотип на заставках
+        self.sun = SpectrumRing(ring_cfg or RingConfig(), self.u * 0.9, self.hf)  # логотип на заставках
 
     def c(self, name):
         return ImageColor.getrgb(self.style[name])
@@ -825,12 +826,13 @@ class Renderer:
         sub_font, sub_lines = (fit_text(d, subtitle, max_w, self.u * 0.055, self.u * 0.03, sub_max_lines, self.tf)
                                if subtitle else (None, []))
         eq_h, gap = self.sun.visual_radius, self.u * 0.06
-        total = eq_h + gap + (line_height(font) * len(lines) if lines else 0)
+        logo_gap = self.u * 0.025  # от основания солнца до текста
+        total = eq_h + logo_gap + (line_height(font) * len(lines) if lines else 0)
         if sub_lines:
             total += (gap * 0.4 if lines else 0) + line_height(sub_font) * len(sub_lines)
         y = (self.H - total) / 2
         self.sun.draw_sun(img, (self.cx, y + eq_h))
-        y += eq_h + gap
+        y += eq_h + logo_gap
         if lines:
             y = draw_lines(d, lines, font, self.cx, y, self.c("text")) + gap * 0.4
         if sub_lines:
@@ -845,7 +847,7 @@ class Renderer:
         self.ring.paint_static(img, (self.cx, self.cy))
         d = ImageDraw.Draw(img)
         max_w = self.W * 0.86
-        y = self.cy + self.ring.visual_radius + self.u * 0.045
+        y = self.cy + self.ring.visual_radius + self.u * 0.015
         if prompt:
             font, lines = fit_text(d, prompt, max_w, self.u * 0.07, self.u * 0.045, 2, self.hf)
             y = draw_lines(d, lines, font, self.cx, y, self.c("text"))
@@ -865,11 +867,24 @@ class Renderer:
         return frame
 
     def question_frames(self, base, levels, n_frames, pre_frames=0):
-        """Кадры вопроса: визуализатор по настоящему спектру + обратный отсчёт."""
+        """Кадры вопроса: визуализатор по настоящему спектру + обратный отсчёт.
+        Кольцо рисуется на вырезке параллельно в несколько потоков (Pillow отпускает GIL)."""
+        box = self.ring.box((self.cx, self.cy))
+        clean = base.crop(box)
+        center = (self.cx - box[0], self.cy - box[1])
+
+        def ring(i):
+            crop = clean.copy()
+            self.ring.draw(crop, center, levels[i], i / FPS, n_frames / FPS, pre_frames / FPS)
+            return crop
+
         frame = base.copy()
-        clean = base.crop(self.ring.box((self.cx, self.cy)))
-        for i in range(pre_frames + n_frames):
-            yield self.question_frame(base, levels, i, n_frames, frame, clean, pre_frames)
+        total = pre_frames + n_frames
+        with ThreadPoolExecutor(max_workers=RENDER_THREADS) as pool:
+            for start in range(0, total, 32):  # пачками, чтобы не держать в памяти весь вопрос
+                for crop in pool.map(ring, range(start, min(total, start + 32))):
+                    frame.paste(crop, box[:2])
+                    yield frame
 
     # --- ответ ---
 
@@ -1001,12 +1016,18 @@ def probe_duration(path):
 
 
 def extract_fragment(src, start, n_samples):
-    """Вырезает отрывок и выравнивает громкость. Возвращает numpy (n_samples, 2), -1..1."""
+    """Вырезает отрывок и выравнивает громкость. Возвращает numpy (n_samples, 2), -1..1.
+    Громкость меняется одним усилением на весь отрывок (без компрессии, как делал бы loudnorm
+    в один проход): до LOUDNESS, но так, чтобы пики не превысили -1.5 dBTP — тихо сведённый
+    трек останется чуть тише, зато не сплющится."""
     dur = n_samples / SAMPLE_RATE
-    af = f"loudnorm=I={LOUDNESS}:TP=-1.5:LRA=11,aresample={SAMPLE_RATE},apad,atrim=end_sample={n_samples}"
-    cmd = ["ffmpeg", "-v", "error", "-ss", f"{start:.3f}", "-t", f"{dur + 1:.3f}", "-i", str(src),
-           "-vn", "-map_metadata", "-1", "-af", af, "-ac", "2", "-ar", str(SAMPLE_RATE),
-           "-f", "s16le", "-"]
+    cut = ["ffmpeg", "-hide_banner", "-ss", f"{start:.3f}", "-t", f"{dur + 1:.3f}", "-i", str(src), "-vn"]
+    r = subprocess.run(cut + ["-af", "loudnorm=print_format=json", "-f", "null", "-"], capture_output=True)
+    m = json.loads("{" + r.stderr.decode(errors="replace").rsplit("{", 1)[-1])  # замер loudnorm — JSON в конце
+    gain = min(LOUDNESS - float(m["input_i"]), -1.5 - float(m["input_tp"]), 6.0)  # тихое не тянем больше чем на 6 дБ
+    af = f"volume={gain:.2f}dB,aresample={SAMPLE_RATE},apad,atrim=end_sample={n_samples}"
+    cmd = cut[:1] + ["-v", "error"] + cut[2:] + ["-map_metadata", "-1", "-af", af, "-ac", "2", "-ar", str(SAMPLE_RATE),
+                                              "-f", "s16le", "-"]
     r = subprocess.run(cmd, capture_output=True)
     if r.returncode != 0:
         raise QuizError(f"Не удалось вырезать отрывок из {Path(src).name}:\n{r.stderr.decode(errors='replace').strip()}")
@@ -1466,7 +1487,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     intro = (fmt(texts["intro_title"], **vals), fmt(texts["intro_subtitle"], **vals), 8)
     outro = (fmt(texts["outro_title"], **vals), fmt(texts["outro_subtitle"], **vals))
 
-    gap_frames = round(timing["gap"] * FPS)  # пауза перед отсчётом каждого вопроса и после каждого ответа
+    gap_frames = round(timing["gap"] * FPS)  # пауза перед отсчётом каждого вопроса
+    answer_gap_frames = round(timing["answer_gap"] * FPS)  # пауза после каждого ответа
 
     def card_frames(key, title):  # пустой заголовок или нулевая длительность — экрана нет
         return frames_for(timing[key]) if timing[key] > 0 and title else 0
@@ -1561,7 +1583,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         add_card("answers_card", card, fmt(texts["answers_narration"], **rv), rnd.get("music", ""))
         for qn, i in idx:
             audio = answer_audio(*fragments[i][1:])
-            timeline.append(("answer", a_frames + gap_frames, audio, (i, dict(rv, n=qn))))
+            timeline.append(("answer", a_frames + answer_gap_frames, audio, (i, dict(rv, n=qn))))
     if not round_id:
         add_card("outro", outro, fmt(texts["outro_narration"], **vals), project["outro_music"])
     total_frames = sum(seg[1] for seg in timeline)
