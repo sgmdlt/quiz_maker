@@ -307,29 +307,36 @@ class SpectrumRing:
         img.paste((255, 255, 255), (x0, y0), track.reduce(ss))
 
     def draw_sun(self, frame, center):
-        """Логотип: верхняя половина кольца — лучи-столбики над закрашенным полукругом.
-        center — середина основания полукруга."""
-        ss = self.ss
+        """Логотип: верхняя половина кольца со столбиками «случайной» длины — с той же толщиной,
+        концами, опорной дугой, цветами и свечением, что у визуализатора. center — середина основания."""
+        cfg, ss = self.cfg, self.ss
         S = self.size * ss
         c = S / 2
         mask = Image.new("L", (S, S), 0)
         d = ImageDraw.Draw(mask)
+        r0 = self.r_in * 0.8 * ss  # дуга меньше, чем в кольце, — лучи длиннее
         w = self.bar_w * ss
         half, width = w / 2, max(1, round(w))
-        rb = self.r_in * 0.5 * ss  # дуга вместо диска
-        d.arc((c - rb, c - rb, c + rb, c + rb), 180, 360, fill=255, width=width)
-        r0 = self.r_in * 0.7 * ss
-        room = self.visual_radius * ss - r0
-        lengths = room * np.random.default_rng(7).uniform(0.35, 1.0, self.n_bars)  # «случайные», но одинаковые в каждом кадре
+        levels = np.random.default_rng(7).uniform(0.3, 1.0, self.n_bars)  # одинаковые в каждом кадре
+        lengths = (self.min_len + levels * (self.visual_radius - self.r_in * 0.8 - self.min_len)) * ss
         for i in np.nonzero(self.cos > 0.05)[0]:
             r1 = r0 + lengths[i]
             sx, cy = self.sin[i], self.cos[i]
             x0, y0, x1, y1 = c + r0 * sx, c - r0 * cy, c + r1 * sx, c - r1 * cy
             d.line((x0, y0, x1, y1), fill=255, width=width)
-            d.ellipse((x1 - half, y1 - half, x1 + half, y1 + half), fill=255)
+            if cfg.round_caps:
+                d.ellipse((x0 - half, y0 - half, x0 + half, y0 + half), fill=255)
+                d.ellipse((x1 - half, y1 - half, x1 + half, y1 + half), fill=255)
+        if self.base_w > 0:
+            rb = r0 - (self.r_in - self.base_r) * ss
+            d.arc((c - rb, c - rb, c + rb, c + rb), 180, 360, fill=255, width=max(1, round(self.base_w * ss)))
         if ss > 1:
             mask = mask.reduce(ss)
         x0, y0, _, _ = self.box(center)
+        if cfg.glow > 0:
+            g = mask.reduce(4).filter(ImageFilter.GaussianBlur(max(1.0, self.glow_r / 4)))
+            g = g.resize((self.size, self.size), Image.Resampling.BILINEAR).point(self.glow_lut)
+            frame.paste(self.color_layer, (x0, y0), g)
         frame.paste(self.color_layer, (x0, y0), mask)
 
     # --- кадр ---
