@@ -17,6 +17,7 @@ import copy
 import csv
 import hashlib
 import io
+import itertools
 import json
 import math
 import os
@@ -77,6 +78,7 @@ DEFAULT_PROJECT = {
     "texts": {
         "intro_title": "Угадай песню",
         "intro_subtitle": "{songs} · {seconds} на каждую",
+        "round_label": "РАУНД {round_n}",
         "question_label": "Вопрос {n} из {total}",
         "prompt": "Что это за песня?",
         "answers_title": "Ответы · {round}",
@@ -127,6 +129,8 @@ DEFAULT_TRACK = {
     "question": "",         # свой вопрос, иначе texts.prompt
     "answer": "",           # свой ответ, иначе исполнитель
     "cover": "",            # своя обложка
+    "video_source": "",     # откуда видеофрагмент — строка под альбомом на ответе
+    "answer_video": "",     # ссылка на видео для ответа (начало из ?t=): ответ идёт на его фоне и с его звуком
     "cover_auto": "",       # найденная автоматически
     "cover_source": "",
     "error": "",
@@ -137,12 +141,17 @@ PATCHABLE = {"name", "format", "timing", "answer_audio", "shuffle", "texts", "fo
 VOICES = {"ru-RU-DmitryNeural": "Дмитрий", "ru-RU-SvetlanaNeural": "Светлана",  # edge-tts, нужен интернет
           "ru_RU-dmitri-medium": "Дмитрий (Piper, без интернета)", "ru_RU-irina-medium": "Ирина (Piper, без интернета)",
           "ru_RU-denis-medium": "Денис (Piper, без интернета)", "ru_RU-ruslan-medium": "Руслан (Piper, без интернета)"}
-TRACK_EDITABLE = {"round", "enabled", "url", "start", "start2", "title", "artist", "album", "year", "hint", "question", "answer", "cover"}
+# общая тема всех квизов (library/theme.json): в project.json эти поля не хранятся
+THEME_KEYS = {"style", "fonts", "visualizer", "timing"}
+THEME_TEXTS = {"round_label", "question_label", "prompt", "answers_title", "answers_subtitle", "answer_label",
+               "outro_title", "outro_subtitle", "answers_narration", "outro_narration"}
+TRACK_EDITABLE = {"round","enabled", "url", "start", "start2", "title", "artist", "album", "year", "hint", "question", "answer", "cover",
+                  "answer_video", "video_source"}
 
 TEXT_PLACEHOLDERS = {
     "{n}": "номер вопроса", "{total}": "всего вопросов",
     "{songs}": "«20 песен»", "{seconds}": "«10 секунд»", "{count}": "число песен",
-    "{round}": "название тура",
+    "{round}": "название тура", "{round_n}": "номер тура",
 }
 
 
@@ -182,9 +191,62 @@ def normalize(project):
     return p
 
 
+def is_theme_path(path):
+    keys = path.split(".")
+    return keys[0] in THEME_KEYS or (keys[0] == "texts" and len(keys) > 1 and keys[1] in THEME_TEXTS)
+
+
+def split_theme(project):
+    """(проект без темы, тема)."""
+    p = copy.deepcopy(project)
+    theme = {k: p.pop(k) for k in THEME_KEYS if k in p}
+    theme["texts"] = {k: p["texts"].pop(k) for k in THEME_TEXTS if k in p.get("texts", {})}
+    return p, theme
+
+
+def _apply_patch(p, set_, unset):
+    for path, value in set_.items():
+        keys = path.split(".")
+        node, defaults = p, DEFAULT_PROJECT
+        for k in keys[:-1]:
+            node = node.setdefault(k, {})
+            defaults = defaults.get(k, {}) if isinstance(defaults, dict) else {}
+        default = defaults.get(keys[-1]) if isinstance(defaults, dict) else None
+        node[keys[-1]] = _coerce(value, default, path)
+    for path in unset:
+        keys = path.split(".")
+        node = p
+        for k in keys[:-1]:
+            node = node.get(k, {})
+        if isinstance(node, dict):
+            node.pop(keys[-1], None)
+    if "visualizer" in p:
+        config_from_dict(p["visualizer"], "визуализаторе")  # проверка
+    return p
+
+
 def question_seconds(project, rnd):
     """Время на вопрос: своё у тура или общее."""
     return float(rnd.get("seconds") or project["timing"]["question"])
+
+
+def answer_seconds(project, rnd):
+    """Время на ответ: своё у тура или общее. В «Трёх попытках» — на каждую песню слайда."""
+    return float(rnd.get("answer_seconds") or project["timing"]["answer"])
+
+
+def answer_groups(rnd, items):
+    """Группы на слайд ответа: в «Трёх попытках» по три подряд (один исполнитель), иначе по одному."""
+    k = 3 if rnd.get("three_tries") else 1
+    return [items[i:i + k] for i in range(0, len(items), k)]
+
+
+def question_labels(rnd, items):
+    """Номер каждого вопроса: 1, 2… или в «Трёх попытках» 1.1, 1.2, 1.3, 2.1…"""
+    groups = answer_groups(rnd, items)
+    if not rnd.get("three_tries"):
+        return [str(g) for g in range(1, len(groups) + 1)]
+    return [f"{g}.{j}" for g, grp in enumerate(groups, 1) for j in range(1, len(grp) + 1)]
 
 
 def group_rounds(project, rows):
@@ -215,14 +277,14 @@ def fmt(template, **values):
         return template or ""
 
 
-def text_values(count, seconds, n=None, total=None, round=""):
+def text_values(count, seconds, n=None, total=None, round="", round_n=""):
     sec = float(seconds)
     sec_txt = f"{sec:g}"
     return {
         "n": n if n is not None else "", "total": total if total is not None else count, "count": count,
         "songs": f"{count} {plural(count, 'песня', 'песни', 'песен')}",
         "seconds": f"{sec_txt} {plural(int(sec), 'секунда', 'секунды', 'секунд') if sec == int(sec) else 'секунды'}",
-        "round": round,
+        "round": round, "round_n": round_n,
     }
 
 
@@ -313,6 +375,20 @@ class Workspace:
         (self.library / "settings.json").write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
         return cur
 
+    # --- общая тема ---
+    def theme(self):
+        path = self.library / "theme.json"
+        data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        return split_theme(deep_merge(DEFAULT_PROJECT, data))[1]
+
+    def patch_theme(self, set_=None, unset=None):
+        with self.lock("theme.json"):
+            theme = _apply_patch(self.theme(), set_, unset)
+            self.library.mkdir(parents=True, exist_ok=True)
+            tmp = self.library / "theme.json.tmp"
+            tmp.write_text(json.dumps(theme, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(tmp, self.library / "theme.json")
+
     # --- проекты ---
     def list_projects(self):
         out = []
@@ -354,7 +430,7 @@ class Workspace:
         if not f.is_file():
             raise QuizError(f"Нет проекта «{slug}»")
         try:
-            return normalize(json.loads(f.read_text(encoding="utf-8")))
+            return deep_merge(normalize(json.loads(f.read_text(encoding="utf-8"))), self.theme())
         except json.JSONDecodeError as e:
             raise QuizError(f"project.json повреждён: {e}")
 
@@ -362,7 +438,7 @@ class Workspace:
         d = self.project_dir(slug)
         d.mkdir(parents=True, exist_ok=True)
         tmp = d / "project.json.tmp"
-        tmp.write_text(json.dumps(project, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.write_text(json.dumps(split_theme(project)[0], ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(tmp, d / "project.json")
 
     def update(self, slug, fn):
@@ -374,27 +450,14 @@ class Workspace:
 
     def patch(self, slug, set_=None, unset=None):
         """set_ = {"texts.prompt": "…", "visualizer.bars": 96}, unset = ["visualizer.bars"]."""
-        def apply(p):
-            for path, value in (set_ or {}).items():
-                keys = path.split(".")
-                if keys[0] not in PATCHABLE:
-                    raise QuizError(f"Нельзя менять {path}")
-                node, defaults = p, DEFAULT_PROJECT
-                for k in keys[:-1]:
-                    node = node.setdefault(k, {})
-                    defaults = defaults.get(k, {}) if isinstance(defaults, dict) else {}
-                default = defaults.get(keys[-1]) if isinstance(defaults, dict) else None
-                node[keys[-1]] = _coerce(value, default, path)
-            for path in unset or []:
-                keys = path.split(".")
-                node = p
-                for k in keys[:-1]:
-                    node = node.get(k, {})
-                if isinstance(node, dict):
-                    node.pop(keys[-1], None)
-            config_from_dict(p["visualizer"], "визуализаторе")  # проверка
+        set_, unset = set_ or {}, unset or []
+        for path in set_:
+            if path.split(".")[0] not in PATCHABLE:
+                raise QuizError(f"Нельзя менять {path}")
         try:
-            return self.update(slug, apply)
+            self.patch_theme({k: v for k, v in set_.items() if is_theme_path(k)}, [k for k in unset if is_theme_path(k)])
+            return self.update(slug, lambda p: _apply_patch(p, {k: v for k, v in set_.items() if not is_theme_path(k)},
+                                                            [k for k in unset if not is_theme_path(k)]))
         except ValueError as e:
             raise QuizError(str(e))
 
@@ -769,6 +832,9 @@ def draw_lines(draw, lines, font, x, y, fill, anchor="ma"):
 
 # ───────────────────────── экраны ─────────────────────────
 
+VIDEO_TEXT_SCALE = 0.75  # подпись ответа поверх видео мельче, чем на обычном ответе
+
+
 class Renderer:
     def __init__(self, width, height, style, fonts, ring_cfg=None, background=None):
         self.W, self.H = width, height
@@ -802,21 +868,32 @@ class Renderer:
         glow = ImageOps.invert(Image.radial_gradient("L")).resize((W, H)).point(lambda v: v * 45 // 100)
         return Image.composite(Image.new("RGB", (W, H), self.c("glow")), bg, glow)
 
-    def _header(self, img, text, color="muted"):
-        if not text:
-            return self.H * 0.04
-        font = self.tf(self.u * 0.045)
+    def _header(self, img, text, color="muted", side=("", "")):
+        """Плашка с номером вопроса; side — (номер тура, название тура) слева, тогда плашка справа."""
         d = ImageDraw.Draw(img)
-        cy = self.H * 0.075
+        margin, top = self.W * 0.04, self.H * 0.04
+        y = top
+        for line, font, c in ((side[0], self.hf(self.u * 0.05), "accent"), (side[1], self.tf(self.u * 0.04), color)):
+            if line:
+                d.text((margin, y), line, font=font, fill=self.c(c), anchor="la")
+                y += line_height(font)
+        if not text:
+            return y
+        font = self.tf(self.u * 0.045)
+        cy = (top + y) / 2 if y > top else self.H * 0.075
         w = d.textlength(text, font=font)
         h = sum(font.getmetrics())
-        box = (self.cx - w / 2 - h * 0.7, cy - h / 2 - h * 0.35,
-               self.cx + w / 2 + h * 0.7, cy + h / 2 + h * 0.35)
+        cx = self.W - margin - w / 2 - h * 0.7 if y > top else self.cx
+        box = (cx - w / 2 - h * 0.7, cy - h / 2 - h * 0.35,
+               cx + w / 2 + h * 0.7, cy + h / 2 + h * 0.35)
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         ImageDraw.Draw(overlay).rounded_rectangle(box, radius=(box[3] - box[1]) / 2, fill=(255, 255, 255, 38))
-        img.paste(overlay, (0, 0), overlay)
-        d.text((self.cx, cy), text, font=font, fill=self.c(color), anchor="mm")
-        return box[3]
+        if img.mode == "RGBA":  # прозрачный слой поверх видео: paste затёр бы прозрачность
+            img.alpha_composite(overlay)
+        else:
+            img.paste(overlay, (0, 0), overlay)
+        d.text((cx, cy), text, font=font, fill=self.c(color), anchor="mm")
+        return max(y, box[3])
 
     def title_card(self, title, subtitle="", sub_max_lines=2):
         img = self.bg.copy()
@@ -841,9 +918,9 @@ class Renderer:
 
     # --- вопрос ---
 
-    def question_base(self, label, prompt, hint=""):
+    def question_base(self, label, prompt, hint="", side=("", "")):
         img = self.bg.copy()
-        self._header(img, label)
+        self._header(img, label, side=side)
         self.ring.paint_static(img, (self.cx, self.cy))
         d = ImageDraw.Draw(img)
         max_w = self.W * 0.86
@@ -923,24 +1000,25 @@ class Renderer:
         img.paste((0, 0, 0), (x - pad, y - pad + pad // 3), shadow)
         img.paste(art, (x, y), mask)
 
-    def _answer_texts(self, d, row, max_w):
+    def _answer_texts(self, d, row, max_w, k=1.0):
+        """k — масштаб шрифтов (поверх видео подпись мельче)."""
         # крупно — ответ (по умолчанию исполнитель), под ним песня
         answer = row.get("answer") or row.get("artist") or row["title"]
         artist_line = (row.get("artist") or "").replace("\n", ", ")
         song = " — ".join(p for p in (artist_line, row["title"]) if p) if row.get("answer") else row["title"]
         blocks = []
-        font, lines = fit_text(d, answer or " ", max_w, self.u * 0.08, self.u * 0.045, 3, self.hf)
+        font, lines = fit_text(d, answer or " ", max_w, self.u * 0.08 * k, self.u * 0.045 * k, 3, self.hf)
         blocks.append((font, lines, self.c("answer_text"), 0))
         if song and song != answer:
-            font, lines = fit_text(d, song, max_w, self.u * 0.055, self.u * 0.035, 2, self.tf)
-            blocks.append((font, lines, self.c("accent"), self.u * 0.015))
+            font, lines = fit_text(d, song, max_w, self.u * 0.055 * k, self.u * 0.035 * k, 2, self.tf)
+            blocks.append((font, lines, self.c("accent"), self.u * 0.015 * k))
         release = " · ".join(p for p in (row.get("album", ""), str(row.get("year", ""))) if p)
         if release:
-            font, lines = fit_text(d, release, max_w, self.u * 0.04, self.u * 0.03, 2, self.tf)
-            blocks.append((font, lines, self.c("answer_muted"), self.u * 0.025))
+            font, lines = fit_text(d, release, max_w, self.u * 0.04 * k, self.u * 0.03 * k, 2, self.tf)
+            blocks.append((font, lines, self.c("answer_muted"), self.u * 0.025 * k))
         return blocks
 
-    def answer_card(self, label, row):
+    def answer_card(self, label, row, side=("", "")):
         cover = None
         if row.get("cover_file"):
             try:
@@ -948,7 +1026,7 @@ class Renderer:
             except Exception:
                 cover = None
         img = self._backdrop(cover) if cover is not None and self.style.get("cover_backdrop") else self.bg.copy()
-        header_bottom = self._header(img, label, "answer_muted")
+        header_bottom = self._header(img, label, "answer_muted", side)
         d = ImageDraw.Draw(img)
         gap = int(self.u * 0.06)
         horizontal = self.W >= self.H
@@ -974,6 +1052,99 @@ class Renderer:
         for font, lines, color, spacing in blocks:
             ty = draw_lines(d, lines, font, tx, ty + spacing, color, anchor)
         return img
+
+    def answer_group_card(self, label, rows, shown, side=("", "")):
+        """«Три попытки»: сверху исполнитель, под ним песни; видны первые shown, места остальных пустые."""
+        img = self.bg.copy()
+        header_bottom = self._header(img, label, "answer_muted", side)
+        d = ImageDraw.Draw(img)
+        font, lines = fit_text(d, group_answer(rows) or " ", self.W * 0.86, self.u * 0.09, self.u * 0.05, 2, self.hf)
+        y = draw_lines(d, lines, font, self.cx, header_bottom + self.u * 0.03, self.c("answer_text"))
+        horizontal = self.W >= self.H
+        n = len(rows)
+        if horizontal:  # колонки: обложка, под ней название и альбом · год
+            col_w = self.W * 0.88 / 3
+            text_h = self.u * 0.28  # под обложкой до двух строк названия и двух строк альбома
+            size = int(min(col_w * 0.75, (self.H - y) * 0.5))
+            top = y + (self.H - y - size - text_h) / 2
+        else:  # строки: обложка слева, тексты справа
+            size = int(min(self.W * 0.3, (self.H - y) * 0.8 / 3))
+            row_h = size + self.u * 0.05
+            top = y + (self.H - y - row_h * n) / 2
+        for k, row in enumerate(rows[:shown]):
+            cover = None
+            if row.get("cover_file"):
+                try:
+                    cover = Image.open(row["cover_file"]).convert("RGB")
+                except Exception:
+                    cover = None
+            release = " · ".join(p for p in (row.get("album", ""), str(row.get("year", ""))) if p)
+            if horizontal:
+                cx = self.cx + (k - (n - 1) / 2) * col_w
+                self._paste_cover(img, cover, int(cx - size / 2), int(top), size)
+                max_w, tx, ty, anchor = col_w * 0.92, cx, top + size + self.u * 0.03, "ma"
+            else:
+                x = int(self.W * 0.07)
+                ty0 = top + k * row_h
+                self._paste_cover(img, cover, x, int(ty0), size)
+                max_w, tx, ty, anchor = self.W * 0.86 - size - self.u * 0.04, x + size + self.u * 0.04, ty0, "la"
+            f, ls = fit_text(d, row["title"], max_w, self.u * 0.05, self.u * 0.032, 2, self.tf)
+            ty = draw_lines(d, ls, f, tx, ty, self.c("accent"), anchor)
+            if release:
+                f, ls = fit_text(d, release, max_w, self.u * 0.035, self.u * 0.026, 2, self.tf)
+                draw_lines(d, ls, f, tx, ty + self.u * 0.01, self.c("answer_muted"), anchor)
+        return img
+
+    def answer_overlay(self, label, row, side=("", "")):
+        """Прозрачный слой с подписью ответа поверх видео: затемнение снизу, шапка, тексты слева внизу.
+        Самая верхняя строка — откуда видеофрагмент."""
+        img = Image.new("RGBA", (self.W, self.H), (0, 0, 0, 0))
+        shade = Image.linear_gradient("L").resize((self.W, self.H)).point(lambda v: v * 200 // 255)
+        img.paste((0, 0, 0, 255), (0, 0), shade)
+        top = Image.linear_gradient("L").rotate(180).resize((self.W, self.H // 4)).point(lambda v: v * 140 // 255)
+        img.paste((0, 0, 0, 255), (0, 0), top)
+        self._header(img, label, "answer_muted", side)
+        d = ImageDraw.Draw(img)
+        max_w = self.W * 0.86
+        k = VIDEO_TEXT_SCALE
+        blocks = self._answer_texts(d, row, max_w, k)
+        if row.get("video_source"):
+            font, lines = fit_text(d, row["video_source"], max_w, self.u * 0.04 * k, self.u * 0.03 * k, 2, self.tf)
+            blocks[0] = blocks[0][:3] + (self.u * 0.02 * k,)  # отступ между источником и ответом
+            blocks.insert(0, (font, lines, self.c("answer_muted"), 0))
+        text_h = sum(line_height(f) * len(ls) + sp for f, ls, _, sp in blocks)
+        tx, ty = self.W * 0.07, self.H - self.u * 0.07 - text_h
+        for font, lines, color, spacing in blocks:
+            ty = draw_lines(d, lines, font, tx, ty + spacing, color, "la")
+        return img
+
+    def video_answer_frames(self, path, start, overlay, n_frames):
+        """Кадры видео с подписью; если видео короче — держится последний кадр."""
+        cmd = ["ffmpeg", "-v", "error", "-ss", f"{start:.3f}", "-i", str(path), "-an",
+               "-vf", f"scale={self.W}:{self.H}:force_original_aspect_ratio=increase,crop={self.W}:{self.H},fps={FPS}",
+               "-frames:v", str(n_frames), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        size, frame = self.W * self.H * 3, None
+        try:
+            for _ in range(n_frames):
+                data = proc.stdout.read(size)
+                if len(data) == size:
+                    frame = Image.alpha_composite(Image.frombytes("RGB", (self.W, self.H), data).convert("RGBA"),
+                                                  overlay).convert("RGB")
+                yield frame if frame is not None else overlay.convert("RGB")
+        finally:
+            proc.kill()
+            proc.wait()
+
+
+def group_answer(rows):
+    """Заголовок слайда «Трёх попыток»: ответ первого трека, иначе его исполнитель."""
+    return (rows[0].get("answer") or rows[0].get("artist") or "").replace("\n", ", ")
+
+
+def round_side(texts, vals):
+    """Подпись тура слева сверху на вопросах и ответах: («РАУНД 1», название)."""
+    return fmt(texts["round_label"], **vals), vals["round"].strip()
 
 
 def rounds_card(project):
@@ -1094,6 +1265,18 @@ def music_audio(ws, source, n_samples):
     return extract_fragment(res["audio"], start or 0, n_samples)
 
 
+def answer_video_file(ws, url):
+    """Видео для ответа: скачивается в library/video."""
+    import shlex
+    import youtube
+
+    try:
+        extra = shlex.split(ws.settings().get("ytdlp_args") or "")
+        return youtube.download_video(url, ws.library / "video", extra_args=extra)
+    except youtube.DownloadError as e:
+        raise QuizError(f"Не удалось скачать видео для ответа {url}: {e}")
+
+
 def extract_fragment_cached(src, start, n_samples):
     """То же, но с памятью на несколько последних отрывков — для быстрого предпросмотра."""
     try:
@@ -1176,7 +1359,8 @@ def prepare_rows(ws, project, need_audio=True):
             "id": t["id"], "round": t["round"], "path": path, "start": float(t["start"] or 0), "start2": t["start2"],
             "title": t["title"] or (path.stem if path else "без названия"), "artist": t["artist"],
             "album": t["album"], "year": t["year"], "hint": t["hint"],
-            "question": t["question"], "answer": t["answer"],
+            "question": t["question"], "answer": t["answer"], "answer_video": t["answer_video"],
+            "video_source": t["video_source"],
             "cover": ws.resolve(t["cover"]) if t.get("cover") else None,
             "thumb": ws.resolve(t["thumb"]) if t.get("thumb") else None,
         })
@@ -1306,6 +1490,7 @@ def prepare_rows_loose(ws, project):
             "id": t["id"], "round": t["round"], "path": ws.resolve(t.get("file")), "title": t["title"],
             "artist": t["artist"],
             "album": t["album"], "year": t["year"], "question": t["question"], "answer": t["answer"],
+            "answer_video": t["answer_video"], "video_source": t["video_source"],
             "cover": ws.resolve(t["cover"]) if t.get("cover") else None,
             "thumb": ws.resolve(t["thumb"]) if t.get("thumb") else None,
         })
@@ -1336,7 +1521,8 @@ def preview(ws, slug, track_id=None, log=print):
     rnd = next((r for r in project["rounds"] if track and r["id"] == track["round"]), project["rounds"][0])
     in_round = [t for t in enabled if t["round"] == rnd["id"]]
     q_frames = frames_for(question_seconds(project, rnd))
-    index = in_round.index(track) + 1 if track else 1
+    pos = in_round.index(track) if track else 0
+    index = question_labels(rnd, in_round or [None])[pos]
     row = {"title": "Название песни", "artist": "Исполнитель", "album": "Альбом", "year": "2004", "hint": ""}
     levels = None
     if track:
@@ -1356,10 +1542,14 @@ def preview(ws, slug, track_id=None, log=print):
 
     out_dir = ws.project_dir(slug) / "output" / "preview"
     out_dir.mkdir(parents=True, exist_ok=True)
-    round_vals = text_values(len(in_round) or 1, question_seconds(project, rnd), round=rnd["title"])
+    round_vals = text_values(len(in_round) or 1, question_seconds(project, rnd), round=rnd["title"],
+                             round_n=project["rounds"].index(rnd) + 1,
+                             total=len(answer_groups(rnd, in_round)) or 1)
     label_vals = dict(round_vals, n=index)
+    group_vals = dict(round_vals, n=pos // 3 + 1)
     base = r.question_base(fmt(texts["question_label"], **label_vals),
-                           fmt(row.get("question") or texts["prompt"], **label_vals), row.get("hint", ""))
+                           fmt(row.get("question") or texts["prompt"], **label_vals), row.get("hint", ""),
+                           round_side(texts, label_vals))
     pre = round(timing["gap"] * FPS)  # как в ролике: пауза с полным кольцом перед отсчётом
     levels = np.concatenate([np.zeros((pre, levels.shape[1]), dtype=levels.dtype), levels])
     reveal_s = min(r.ring.cfg.reveal_seconds, pre / FPS) if pre else r.ring.cfg.reveal_seconds
@@ -1371,7 +1561,9 @@ def preview(ws, slug, track_id=None, log=print):
         "reveal": r.question_frame(base, levels, reveal_i, q_frames, pre_frames=pre),
         "question": r.question_frame(base, levels, pre + int(q_frames * 0.55), q_frames, pre_frames=pre),
         "answers": r.title_card(fmt(texts["answers_title"], **round_vals), fmt(texts["answers_subtitle"], **round_vals)),
-        "answer": r.answer_card(fmt(texts["answer_label"], **label_vals), row),
+        "answer": (group_preview(ws, project, r, fmt(texts["answer_label"], **group_vals), rnd, in_round, pos,
+                                 round_side(texts, group_vals)) if rnd.get("three_tries") else
+                   answer_preview(ws, r, fmt(texts["answer_label"], **label_vals), row, round_side(texts, label_vals))),
         "outro": r.title_card(fmt(texts["outro_title"], **vals), fmt(texts["outro_subtitle"], **vals)),
     }
     paths = {}
@@ -1381,6 +1573,26 @@ def preview(ws, slug, track_id=None, log=print):
         paths[name] = ws.rel(p)
     log(f"Предпросмотр готов (трек: {track_label(track) if track else 'пример'})")
     return {"images": paths, "track_id": track["id"] if track else None}
+
+
+def group_preview(ws, project, r, label, rnd, in_round, pos, side):
+    """Слайд «Трёх попыток» со всеми песнями группы, в которую входит трек."""
+    group = answer_groups(rnd, in_round)[pos // 3] if in_round else []
+    rows = prepare_rows_loose(ws, {"tracks": group}) or [{"title": "Название песни", "artist": "Исполнитель"}]
+    if group:
+        apply_covers(rows, cover_finder(ws, project).find_all(rows))
+    return r.answer_group_card(label, rows, len(rows), side)
+
+
+def answer_preview(ws, r, label, row, side):
+    """Ответ для предпросмотра: с видео — стоп-кадр из его начала с подписью."""
+    import youtube
+
+    if not row.get("answer_video"):
+        return r.answer_card(label, row, side)
+    video = answer_video_file(ws, row["answer_video"])
+    start = youtube.parse_url(row["answer_video"])[1] or 0
+    return next(r.video_answer_frames(video, start, r.answer_overlay(label, row, side), 1))
 
 
 def answers_sheet(ws, slug, log=print):
@@ -1447,12 +1659,15 @@ def frames_for(seconds):
     return max(1, round(float(seconds) * FPS))
 
 
-def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=None):
+def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=None, voice=True):
     """Собирает видео. Возвращает пути к видео, обложке ролика и описанию.
-    round_id (id или название тура) — пробный ролик только из этого тура, без общей заставки и финала."""
+    round_id (id или название тура) — пробный ролик только из этого тура, без общей заставки и финала.
+    voice=False — без озвучки заставок (например, когда сервис голоса недоступен)."""
     started = time.time()
     progress = progress or (lambda frac, stage: None)
     project = ws.load(slug)
+    if not voice:
+        project["voice"] = ""
     timing, texts = project["timing"], project["texts"]
     if timing["question"] <= 0 or timing["answer"] <= 0:
         raise QuizError("Длительность вопроса и ответа должна быть больше нуля")
@@ -1468,21 +1683,20 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         rows = [r for r in rows if r["round"] == rnd["id"]]
         if not rows:
             raise QuizError(f"В туре «{rnd['title']}» нет включённых треков")
-    if limit:
-        rows = rows[:int(limit)]
     rounds = group_rounds(project, rows)
+    if limit:  # пробный ролик — первые N вопросов каждого тура
+        rounds = [(rnd, rs[:int(limit)]) for rnd, rs in rounds]
     rows = [row for _, rs in rounds for row in rs]
     for rnd, rs in rounds:
         for row in rs:
             row["q_frames"] = frames_for(question_seconds(project, rnd))
+            row["a_frames"] = frames_for(answer_seconds(project, rnd))
             if row["start2"] is not None:  # два фрагмента по половине + пауза между ними
                 row["q_frames"] += frames_for(SPLIT_PAUSE)
     renderer = make_renderer(ws, project)
     ring_cfg = renderer.ring.cfg
 
     n = len(rows)
-    a_frames = frames_for(timing["answer"])
-    a_samples = a_frames * SAMPLES_PER_FRAME
     vals = text_values(n, timing["question"])
     intro = (fmt(texts["intro_title"], **vals), fmt(texts["intro_subtitle"], **vals), 8)
     outro = (fmt(texts["outro_title"], **vals), fmt(texts["outro_subtitle"], **vals))
@@ -1502,13 +1716,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
             lead = np.zeros((round(0.4 * SAMPLE_RATE), 2), dtype=np.float32)
             audio = np.concatenate([lead, speech(ws, project["voice"], narration)])
             frames = max(frames, frames_for(len(audio) / SAMPLE_RATE + 1))
-        if music:  # фоновая музыка под голосом, каждый раз с начала
-            n = frames * SAMPLES_PER_FRAME
-            bed = with_fades(music_audio(ws, music, n), 0.5, 1.5)
-            bed *= float(project["music_volume"])
-            if audio is not None:
-                bed[:len(audio)] += audio
-            audio = bed
+        if music:
+            beds[len(timeline)] = music
         timeline.append(("card", frames, audio, card))
 
     out_dir = ws.project_dir(slug) / "output"
@@ -1534,6 +1743,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     def cut(r):
         """(звук вопроса, отрывок для ответа, где в нём кончается вопрос)"""
         q_samples = r["q_frames"] * SAMPLES_PER_FRAME
+        a_samples = r["a_frames"] * SAMPLES_PER_FRAME
         if r["start2"] is None:
             frag = extract_fragment(r["path"], r["start"], q_samples + a_samples)
             return with_fades(frag[:q_samples], 0.1, 0.6), frag, q_samples
@@ -1549,9 +1759,18 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     if cancel is not None and cancel.is_set():
         raise Cancelled()
 
-    def answer_audio(frag, q_samples):
+    import youtube
+
+    videos = {}  # номер строки → (файл, начало)
+    for i, row in enumerate(rows):
+        if row["answer_video"]:
+            log(f"Скачиваю видео для ответа: {row['answer_video']}")
+            videos[i] = (answer_video_file(ws, row["answer_video"]), youtube.parse_url(row["answer_video"])[1] or 0)
+
+    def answer_audio(row, frag, q_samples):
         mode = project["answer_audio"]
-        fade = min(1.0, timing["answer"] / 3)
+        a_samples = row["a_frames"] * SAMPLES_PER_FRAME
+        fade = min(1.0, a_samples / SAMPLE_RATE / 3)
         if mode == "replay":
             return with_fades(frag[:a_samples], 0.15, fade)
         if mode == "continue":
@@ -1560,6 +1779,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
 
     # 3. Сценарий
     timeline = []  # (вид, кадров, звук, данные)
+    beds = {}  # номер сегмента → фоновая музыка экрана
     chapters_at = {}  # номер сегмента → глава в описании
     log("Озвучиваю заставки…" if project["voice"] else "Собираю сценарий…")
     if not round_id:
@@ -1568,8 +1788,12 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         add_card("rounds", card, fmt(texts["rounds_narration"], **vals) or card[1], project["intro_music"], card[1])
     first = 0
     for k, (rnd, rs) in enumerate(rounds, start=1):
-        rv = text_values(len(rs), question_seconds(project, rnd), round=rnd["title"])
-        idx = list(enumerate(range(first, first + len(rs)), start=1))
+        rv = text_values(len(rs), question_seconds(project, rnd), round=rnd["title"],
+                         round_n=project["rounds"].index(rnd) + 1)
+        labels = question_labels(rnd, rs)
+        groups = answer_groups(rnd, list(range(first, first + len(rs))))
+        rv["total"] = len(groups)
+        idx = list(zip(labels, range(first, first + len(rs))))
         first += len(rs)
         chapters_at[len(timeline)] = rnd["title"] or f"Тур {k}"
         rules = fmt(rnd["rules"], **rv)
@@ -1581,11 +1805,34 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         card = (fmt(texts["answers_title"], **rv), fmt(texts["answers_subtitle"], **rv))
         chapters_at[len(timeline)] = card[0] or f"Ответы · {rnd['title'] or f'Тур {k}'}"
         add_card("answers_card", card, fmt(texts["answers_narration"], **rv), rnd.get("music", ""))
+        if rnd.get("three_tries"):  # слайд на исполнителя: песни появляются по очереди, каждая под свой отрывок
+            for g, group in enumerate(groups, start=1):
+                parts = [answer_audio(rows[i], *fragments[i][1:]) for i in group]
+                audio = None if parts[0] is None else np.concatenate(parts)
+                frames = sum(rows[i]["a_frames"] for i in group) + answer_gap_frames
+                timeline.append(("group", frames, audio, (group, dict(rv, n=g))))
+            continue
         for qn, i in idx:
-            audio = answer_audio(*fragments[i][1:])
-            timeline.append(("answer", a_frames + answer_gap_frames, audio, (i, dict(rv, n=qn))))
+            row = rows[i]
+            audio = answer_audio(row, *fragments[i][1:])
+            if i in videos:
+                fade = min(1.0, row["a_frames"] / FPS / 3)
+                audio = with_fades(extract_fragment(*videos[i], row["a_frames"] * SAMPLES_PER_FRAME), 0.15, fade)
+            timeline.append(("answer", row["a_frames"] + answer_gap_frames, audio, (i, dict(rv, n=qn))))
     if not round_id:
         add_card("outro", outro, fmt(texts["outro_narration"], **vals), project["outro_music"])
+    # фоновая музыка: подряд идущие экраны с одной музыкой звучат без перерыва
+    for music, group in itertools.groupby(range(len(timeline)), key=beds.get):
+        if not music:
+            continue
+        ks = list(group)
+        lens = [timeline[k][1] * SAMPLES_PER_FRAME for k in ks]
+        bed = with_fades(music_audio(ws, music, sum(lens)), 0.5, 1.5) * float(project["music_volume"])
+        for k, part in zip(ks, np.split(bed, np.cumsum(lens)[:-1])):
+            kind, frames, voice, data = timeline[k]
+            if voice is not None:
+                part[:len(voice)] += voice
+            timeline[k] = (kind, frames, part, data)
     total_frames = sum(seg[1] for seg in timeline)
     log(f"Квиз: {n} {plural(n, 'песня', 'песни', 'песен')}, видео {fmt_ts(total_frames / FPS)}, "
         f"{renderer.W}x{renderer.H}")
@@ -1633,12 +1880,26 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
                     i, lv = data
                     row = rows[i]
                     base = renderer.question_base(fmt(texts["question_label"], **lv),
-                                                  fmt(row["question"] or texts["prompt"], **lv), row["hint"])
+                                                  fmt(row["question"] or texts["prompt"], **lv), row["hint"],
+                                                  round_side(texts, lv))
                     levels = analyze(audio.mean(axis=1), SAMPLE_RATE, frames_n, FPS, ring_cfg)
                     writer.segment(renderer.question_frames(base, levels, row["q_frames"], gap_frames), frames_n)
+                elif kind == "group":
+                    group, lv = data
+                    cards = [renderer.answer_group_card(fmt(texts["answer_label"], **lv), [rows[i] for i in group],
+                                                        k + 1, round_side(texts, lv)) for k in range(len(group))]
+                    ends = np.cumsum([rows[i]["a_frames"] for i in group])
+                    shown = (cards[min(int(np.searchsorted(ends, f, side="right")), len(cards) - 1)]
+                             for f in range(frames_n))
+                    writer.segment(shown, frames_n)
+                elif data[0] in videos:
+                    i, lv = data
+                    overlay = renderer.answer_overlay(fmt(texts["answer_label"], **lv), rows[i], round_side(texts, lv))
+                    writer.segment(renderer.video_answer_frames(*videos[i], overlay, frames_n), frames_n)
                 else:
                     i, lv = data
-                    writer.segment(renderer.answer_card(fmt(texts["answer_label"], **lv), rows[i]), frames_n)
+                    writer.segment(renderer.answer_card(fmt(texts["answer_label"], **lv), rows[i],
+                                                        round_side(texts, lv)), frames_n)
             proc.stdin.close()
             err = proc.stderr.read().decode(errors="replace")
             if proc.wait() != 0:
@@ -1667,7 +1928,11 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     for (rnd, rs), (_, name) in zip(rounds, chapters[::2]):
         if len(rounds) > 1:
             desc_lines.append(name)
-        desc_lines += [f"{i}. {track_label(row)}" for i, row in enumerate(rs, start=1)]
+        if rnd.get("three_tries"):
+            desc_lines += [f"{g}. {group_answer(grp)} — {', '.join(r['title'] for r in grp)}"
+                           for g, grp in enumerate(answer_groups(rnd, rs), start=1)]
+        else:
+            desc_lines += [f"{i}. {track_label(row)}" for i, row in enumerate(rs, start=1)]
     desc = out_dir / f"{stem}_description.txt"
     desc.write_text("\n".join(desc_lines) + "\n", encoding="utf-8")
 

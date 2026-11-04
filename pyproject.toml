@@ -19,3 +19,11 @@ dependencies = [
 # Скрипты лежат в корне папки и запускаются через «uv run make_quiz.py …»,
 # собирать проект в пакет не нужно.
 package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
