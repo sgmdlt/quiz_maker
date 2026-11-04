@@ -24,7 +24,7 @@ def _tone(path, freq):
                     "-ac", "2", "-ar", str(qc.SAMPLE_RATE), str(path)], check=True)
 
 
-def test_build_three_tries_round(tmp_path):
+def test_build_three_tries_round(tmp_path, monkeypatch):
     ws = qc.Workspace(tmp_path)
     tracks = []
     for k, title in enumerate(["Раз", "Два", "Три"]):
@@ -37,7 +37,13 @@ def test_build_three_tries_round(tmp_path):
         "tracks": tracks,
     })
     t = ws.load(slug)["timing"]
+    labels = []
+    orig_q, orig_a = qc.Renderer.question_base, qc.Renderer.answer_group_card
+    monkeypatch.setattr(qc.Renderer, "question_base", lambda self, label, *a, **k: labels.append(label) or orig_q(self, label, *a, **k))
+    monkeypatch.setattr(qc.Renderer, "answer_group_card", lambda self, label, *a, **k: labels.append(label) or orig_a(self, label, *a, **k))
     result = qc.build(ws, slug, round_id="r1", log=lambda *_: None)
+    assert labels[:3] == ["Вопрос 1.1 из 3", "Вопрос 1.2 из 3", "Вопрос 1.3 из 3"]
+    assert set(labels[3:]) == {"Ответ 1 из 1"}
     expected = (t["round"] + 3 * (t["gap"] + t["question"]) + t["answers_card"] + 3 * 2 + t["answer_gap"])
     assert abs(result["duration"] - expected) < 0.1
     assert "1. Группа — Раз, Два, Три" in result["description_text"]
