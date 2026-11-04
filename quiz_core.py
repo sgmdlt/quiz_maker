@@ -1054,12 +1054,13 @@ class Renderer:
         return img
 
     def answer_group_card(self, label, rows, shown, side=("", "")):
-        """«Три попытки»: сверху исполнитель, под ним песни; видны первые shown, места остальных пустые."""
+        """«Три попытки»: сверху исполнитель, под ним песни; видны первые shown, места остальных пустые.
+        Фон общий, а не обложка, поэтому цвета текста — как на вопросах (text, muted)."""
         img = self.bg.copy()
-        header_bottom = self._header(img, label, "answer_muted", side)
+        header_bottom = self._header(img, label, "muted", side)
         d = ImageDraw.Draw(img)
         font, lines = fit_text(d, group_answer(rows) or " ", self.W * 0.86, self.u * 0.09, self.u * 0.05, 2, self.hf)
-        y = draw_lines(d, lines, font, self.cx, header_bottom + self.u * 0.03, self.c("answer_text"))
+        y = draw_lines(d, lines, font, self.cx, header_bottom + self.u * 0.03, self.c("text"))
         horizontal = self.W >= self.H
         n = len(rows)
         if horizontal:  # колонки: обложка, под ней название и альбом · год
@@ -1092,7 +1093,7 @@ class Renderer:
             ty = draw_lines(d, ls, f, tx, ty, self.c("accent"), anchor)
             if release:
                 f, ls = fit_text(d, release, max_w, self.u * 0.035, self.u * 0.026, 2, self.tf)
-                draw_lines(d, ls, f, tx, ty + self.u * 0.01, self.c("answer_muted"), anchor)
+                draw_lines(d, ls, f, tx, ty + self.u * 0.01, self.c("muted"), anchor)
         return img
 
     def answer_overlay(self, label, row, side=("", "")):
@@ -1543,10 +1544,9 @@ def preview(ws, slug, track_id=None, log=print):
     out_dir = ws.project_dir(slug) / "output" / "preview"
     out_dir.mkdir(parents=True, exist_ok=True)
     round_vals = text_values(len(in_round) or 1, question_seconds(project, rnd), round=rnd["title"],
-                             round_n=project["rounds"].index(rnd) + 1,
-                             total=len(answer_groups(rnd, in_round)) or 1)
+                             round_n=project["rounds"].index(rnd) + 1)
     label_vals = dict(round_vals, n=index)
-    group_vals = dict(round_vals, n=pos // 3 + 1)
+    group_vals = dict(round_vals, n=pos // 3 + 1, total=len(answer_groups(rnd, in_round)) or 1)
     base = r.question_base(fmt(texts["question_label"], **label_vals),
                            fmt(row.get("question") or texts["prompt"], **label_vals), row.get("hint", ""),
                            round_side(texts, label_vals))
@@ -1653,6 +1653,18 @@ class VideoWriter:
                 self._put(img.tobytes())
             if i == n - 1:
                 self.last = img.copy()
+
+
+def group_frames(cards, starts, n_frames, fade=round(0.6 * FPS)):
+    """Кадры слайда «Трёх попыток»: cards[k] — показаны k+1 песен, starts[k] — кадр её появления.
+    Каждая следующая песня плавно проявляется за fade кадров (с замедлением в конце)."""
+    for f in range(n_frames):
+        k = max(0, int(np.searchsorted(starts, f, side="right")) - 1)
+        t = (f - starts[k]) / fade
+        if k == 0 or t >= 1:
+            yield cards[k]
+        else:
+            yield Image.blend(cards[k - 1], cards[k], 1 - (1 - t) ** 3)
 
 
 def frames_for(seconds):
@@ -1792,7 +1804,6 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
                          round_n=project["rounds"].index(rnd) + 1)
         labels = question_labels(rnd, rs)
         groups = answer_groups(rnd, list(range(first, first + len(rs))))
-        rv["total"] = len(groups)
         idx = list(zip(labels, range(first, first + len(rs))))
         first += len(rs)
         chapters_at[len(timeline)] = rnd["title"] or f"Тур {k}"
@@ -1810,7 +1821,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
                 parts = [answer_audio(rows[i], *fragments[i][1:]) for i in group]
                 audio = None if parts[0] is None else np.concatenate(parts)
                 frames = sum(rows[i]["a_frames"] for i in group) + answer_gap_frames
-                timeline.append(("group", frames, audio, (group, dict(rv, n=g))))
+                timeline.append(("group", frames, audio, (group, dict(rv, n=g, total=len(groups)))))
             continue
         for qn, i in idx:
             row = rows[i]
@@ -1888,10 +1899,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
                     group, lv = data
                     cards = [renderer.answer_group_card(fmt(texts["answer_label"], **lv), [rows[i] for i in group],
                                                         k + 1, round_side(texts, lv)) for k in range(len(group))]
-                    ends = np.cumsum([rows[i]["a_frames"] for i in group])
-                    shown = (cards[min(int(np.searchsorted(ends, f, side="right")), len(cards) - 1)]
-                             for f in range(frames_n))
-                    writer.segment(shown, frames_n)
+                    starts = np.cumsum([0] + [rows[i]["a_frames"] for i in group[:-1]])
+                    writer.segment(group_frames(cards, starts, frames_n), frames_n)
                 elif data[0] in videos:
                     i, lv = data
                     overlay = renderer.answer_overlay(fmt(texts["answer_label"], **lv), rows[i], round_side(texts, lv))
