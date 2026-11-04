@@ -472,7 +472,7 @@ function saveTrack(id, field, value, { now = false } = {}) {
       Object.assign(trackById(id) || {}, r.track);
       S.d.status[id] = r.status;
       setSaved("ok");
-      if (["title", "artist", "album", "year", "hint", "question", "answer", "cover", "start", "enabled"].includes(field) && S.pv.track === id) schedulePreview();
+      if (["title", "artist", "album", "year", "hint", "question", "answer", "answer_video", "video_source", "cover", "start", "enabled"].includes(field) && S.pv.track === id) schedulePreview();
       if (field === "enabled") { updateCount(); if (S.tab === "build") renderBuild(); }
     } catch (e) { setSaved("err", e.message); fail(e); }
     finally { saving--; }
@@ -717,7 +717,9 @@ function renderRounds() {
   $("#roundPanel").innerHTML = `
     <div class="row"><input id="roundTitle" value="${esc(cur.title)}" placeholder="Название тура (пусто — без заставки тура)" aria-label="Название тура">
       <label class="unit" title="Секунд на вопрос в этом туре. Пусто — как в «Оформлении»"><input type="number" min="1" step="1" id="roundSeconds" style="width:90px" value="${cur.seconds ?? ""}" placeholder="${P().timing.question}" aria-label="Секунд на вопрос"></label>
-      ${P().rounds.length > 1 ? `<button class="btn small ghost" id="delRound">Удалить тур</button>` : ""}</div>
+      <label class="unit" title="Секунд на ответ в этом туре (в «Трёх попытках» — на каждую песню). Пусто — как в «Оформлении»"><input type="number" min="1" step="1" id="roundAnswerSeconds" style="width:90px" value="${cur.answer_seconds ?? ""}" placeholder="${P().timing.answer}" aria-label="Секунд на ответ"></label>
+      <label title="Три подряд идущих трека — один исполнитель: вопросы 1.1, 1.2, 1.3, ответ — один слайд на исполнителя"><input type="checkbox" id="roundThree" ${cur.three_tries ? "checked" : ""}> Три попытки</label>
+      ${P().rounds.length > 1 ? `<button class="btn small ghost" data-move="-1" title="Поставить тур раньше" aria-label="Тур раньше">←</button><button class="btn small ghost" data-move="1" title="Поставить тур позже" aria-label="Тур позже">→</button><button class="btn small ghost" id="delRound">Удалить тур</button>` : ""}</div>
     <textarea id="roundRules" placeholder="Правила тура — показываются на его заставке" aria-label="Правила тура">${esc(cur.rules)}</textarea>
     <textarea id="roundNarration" placeholder="Текст для диктора — пусто: читает название и правила" aria-label="Текст для диктора">${esc(cur.narration || "")}</textarea>
     <label class="field"><span>Фоновая музыка тура — на правилах и «Ответах»</span>${musicField("roundMusic", cur.music)}</label>`;
@@ -727,6 +729,12 @@ function renderRounds() {
     P().rounds.push(r); S.round = r.id;
     saveProject("rounds", P().rounds, { now: true }); renderRounds(); renderTracksList();
   };
+  $$("#roundPanel [data-move]").forEach(b => b.onclick = () => {
+    const rs = P().rounds, i = rs.findIndex(r => r.id === cur.id), j = i + Number(b.dataset.move);
+    if (j < 0 || j >= rs.length) return;
+    [rs[i], rs[j]] = [rs[j], rs[i]];
+    saveProject("rounds", rs, { now: true }); renderRounds(); renderTracksList();
+  });
   if ($("#delRound")) $("#delRound").onclick = () => {
     const n = roundTracks().length;
     if (n && !confirm(`В туре ${n} ${plural(n, "трек", "трека", "треков")}. Они перейдут в первый тур. Удалить тур?`)) return;
@@ -745,6 +753,16 @@ function renderRounds() {
     r.seconds = v > 0 ? v : null;
     saveProject("rounds", P().rounds);
     roundTracks().forEach(t => drawWave(t.id));
+  });
+  $("#roundAnswerSeconds").addEventListener("input", e => {
+    const v = parseFloat(e.target.value);
+    curRound().answer_seconds = v > 0 ? v : null;
+    saveProject("rounds", P().rounds);
+  });
+  $("#roundThree").addEventListener("change", e => {
+    curRound().three_tries = e.target.checked;
+    saveProject("rounds", P().rounds, { now: true });
+    showRoundPreview();
   });
   $("#roundTitle").addEventListener("input", onEdit);
   $("#roundRules").addEventListener("input", onEdit);
@@ -831,6 +849,8 @@ function trackRow(t, i) {
         ${ml(t, "question", "Вопрос — как во вкладке «Тексты»")}
         ${ml(t, "answer", "Ответ — исполнитель")}
       </div>
+      <input data-f="answer_video" placeholder="Видео на ответе — ссылка (начало из ?t=)" value="${esc(t.answer_video || "")}" aria-label="Видео на ответе">
+      <input data-f="video_source" placeholder="Откуда фрагмент — строка на ответе" value="${esc(t.video_source || "")}" aria-label="Откуда видеофрагмент">
       ${t.url ? `<div class="url" title="${esc(t.url)}">${esc(t.url)}</div>` : ""}
     </div>
     <div class="t-side"><span class="status"></span><button class="icon more" aria-label="Действия с треком">⋯</button></div>
@@ -915,7 +935,7 @@ document.addEventListener("change", e => {
 });
 document.addEventListener("focusin", e => {
   const li = e.target.closest("li.track"); if (!li || !e.target.matches("[data-f]")) return;
-  if (["title", "artist", "album", "year", "answer"].includes(e.target.dataset.f)) setPreviewTrack(li.dataset.id, "answer");
+  if (["title", "artist", "album", "year", "answer", "answer_video", "video_source"].includes(e.target.dataset.f)) setPreviewTrack(li.dataset.id, "answer");
   else if (["hint", "start", "question"].includes(e.target.dataset.f)) setPreviewTrack(li.dataset.id, "question");
 });
 document.addEventListener("click", e => {
@@ -1199,10 +1219,10 @@ const TEXT_GROUPS = [
     ["intro_narration", "Текст для диктора", true, "Пусто — диктор читает заголовок и приветствие"]], "Пустой заголовок — заставки не будет. Название и правила каждого тура — во вкладке «Треки»."],
   ["Список туров", "rounds", [["rounds_narration", "Текст для диктора", true, "Пусто — диктор читает список туров"]],
     "Идёт после заставки: номера и названия туров из вкладки «Треки». Музыка — как у заставки. Длительность 0 во вкладке «Оформление» — слайда не будет."],
-  ["Вопрос", "question", [["question_label", "Плашка сверху"], ["prompt", "Надпись под кольцом"]], "Подсказка для конкретного трека задаётся во вкладке «Треки»."],
+  ["Вопрос", "question", [["round_label", "Тур слева сверху"], ["question_label", "Плашка справа сверху"], ["prompt", "Надпись под кольцом"]], "Под «Туром» — название тура, на вопросах и ответах. Пустой «Тур» — только название. Подсказка для конкретного трека задаётся во вкладке «Треки»."],
   ["Перед ответами тура", "answers", [["answers_title", "Заголовок"], ["answers_subtitle", "Подзаголовок"],
     ["answers_narration", "Текст для диктора", true, "Пусто — без озвучки. Можно {round}"]], "Показывается в конце каждого тура, {round} — его название. Пустой заголовок — экрана не будет, ответы пойдут сразу."],
-  ["Ответ", "answer", [["answer_label", "Плашка сверху"]], "Название, исполнитель, альбом и год берутся из треков."],
+  ["Ответ", "answer", [["answer_label", "Плашка справа сверху"]], "Название, исполнитель, альбом и год берутся из треков."],
   ["Финал", "outro", [["outro_title", "Заголовок"], ["outro_subtitle", "Подзаголовок"],
     ["outro_narration", "Текст для диктора", true, "Пусто — без озвучки. Например, куда писать и где подписаться"]], "Пустой заголовок — финального экрана не будет."],
 ];
@@ -1459,6 +1479,7 @@ function renderBuild() {
       </div>
       ${problems.length ? `<div class="problems"><b>${blocking.length ? "Перед сборкой нужно исправить" : "Стоит проверить"}</b><ul>${problems.map(([id, m]) => `<li><a data-goto="${id}">${esc(m)}</a></li>`).join("")}</ul></div>` : ""}
       <label class="check" style="margin-bottom:16px"><span class="switch"><input type="checkbox" id="shuffle" ${p.shuffle ? "checked" : ""}><span></span></span>Перемешать порядок вопросов при сборке</label>
+      ${p.voice ? `<label class="check" style="margin-bottom:16px"><span class="switch"><input type="checkbox" id="withVoice" ${store.get("withVoice", true) ? "checked" : ""}><span></span></span>С озвучкой заставок</label>` : ""}
       <div class="row">
         <span class="row" style="gap:6px">
           <button class="btn" id="buildTest" ${running || blocking.length || !on ? "disabled" : ""}>Пробный ролик</button>
@@ -1491,6 +1512,7 @@ function renderBuild() {
     </div>`;
   updateBuildProgress();
   $("#shuffle").onchange = e => saveProject("shuffle", e.target.checked, { now: true });
+  if ($("#withVoice")) $("#withVoice").onchange = e => store.set("withVoice", e.target.checked);
   $("#limit").oninput = e => store.set("limit", Math.max(1, parseInt(e.target.value, 10) || 1));
   $("#buildTest").onclick = () => startBuild(Math.max(1, parseInt($("#limit").value, 10) || 2), $("#testRound").value);
   $("#buildAll").onclick = () => startBuild(null);
@@ -1510,7 +1532,8 @@ async function startBuild(limit, round) {
   if (limit) store.set("limit", limit);
   if (round !== undefined) store.set("testRound", round);
   stopPlayback();
-  await startJob("build", limit ? { limit, round } : {});
+  const voice = !P().voice || store.get("withVoice", true);
+  await startJob("build", limit ? { limit, round, voice } : { voice });
   renderBuild();
 }
 function updateBuildProgress() {

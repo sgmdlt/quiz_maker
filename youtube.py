@@ -199,6 +199,22 @@ def _files_for(dest, key):
     return audio, thumb, info
 
 
+def download_video(url, dest, extra_args=()):
+    """Скачивает видео (до 1080p) в dest/<ключ>.mp4. Возвращает путь."""
+    cmd = ytdlp_command()
+    if not cmd:
+        raise DownloadError(f"yt-dlp не найден: {INSTALL_HINT}")
+    key, _, _ = parse_url(url)
+    out = Path(dest) / f"{key}.mp4"
+    if out.is_file():
+        return out
+    r = subprocess.run(cmd + ["-f", "bv*[height<=1080]+ba/b", "--merge-output-format", "mp4", "--no-playlist",
+                              "-o", str(out), *extra_args, url], capture_output=True, text=True)
+    if r.returncode != 0 or not out.is_file():
+        raise DownloadError(friendly_error(r.stdout.splitlines() + r.stderr.splitlines(), True))
+    return out
+
+
 def find_cached(dest, url):
     key, _, _ = parse_url(url)
     audio, thumb, info = _files_for(Path(dest), key)

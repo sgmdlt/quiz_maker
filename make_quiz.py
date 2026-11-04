@@ -116,9 +116,10 @@ def main():
 
     s = sub.add_parser("build", help="собрать видео")
     s.add_argument("project")
-    s.add_argument("--limit", type=int, help="только первые N песен — пробный ролик")
+    s.add_argument("--limit", type=int, help="пробный ролик: первые N песен каждого тура")
     s.add_argument("--round", help="только этот тур (название или id) — пробный ролик")
     s.add_argument("--no-download", action="store_true", help="не докачивать треки перед сборкой")
+    s.add_argument("--no-voice", action="store_true", help="без озвучки заставок")
 
     a = ap.parse_args()
     ws = q.Workspace(a.home or q.ROOT)
@@ -174,7 +175,7 @@ def main():
                 if any(t.get("url") and not (ws.resolve(t.get("file")) and ws.resolve(t["file"]).is_file())
                        for t in project["tracks"] if t.get("enabled", True)):
                     q.download_tracks(ws, slug, log=say, progress=progress_bar)
-            r = q.build(ws, slug, limit=a.limit, log=say, progress=progress_bar, round_id=a.round)
+            r = q.build(ws, slug, limit=a.limit, log=say, progress=progress_bar, round_id=a.round, voice=not a.no_voice)
             print(f"\n  видео     {ws.resolve(r['video'])}")
             print(f"  обложка   {ws.resolve(r['thumbnail'])}")
             print(f"  описание  {ws.resolve(r['description'])}")
