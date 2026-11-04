@@ -1,3 +1,4 @@
+import itertools
 import json
 import subprocess
 
@@ -27,13 +28,14 @@ def _tone(path, freq):
 def test_build_three_tries_round(tmp_path, monkeypatch):
     ws = qc.Workspace(tmp_path)
     tracks = []
-    for k, title in enumerate(["Раз", "Два", "Три"]):
+    for k, title in enumerate(["Раз", "Два", "Три", "Four", "Five", "Six"]):
         path = tmp_path / f"{k}.wav"
         _tone(path, 300 + 100 * k)
-        tracks.append({"file": path.name, "title": title, "artist": "Группа", "duration": 20.0})
+        tracks.append({"file": path.name, "title": title, "artist": "Группа" if k < 3 else "Band", "duration": 20.0})
     slug = ws.create("Тест", {
         "voice": "", "covers": {"online": False},
-        "rounds": [{"id": "r1", "title": "Три попытки", "rules": "", "three_tries": True, "answer_seconds": 2}],
+        "rounds": [{"id": "r1", "title": "Три попытки", "rules": "", "three_tries": True, "answer_seconds": 2,
+                    "gap": 3}],
         "tracks": tracks,
     })
     t = ws.load(slug)["timing"]
@@ -42,9 +44,11 @@ def test_build_three_tries_round(tmp_path, monkeypatch):
     monkeypatch.setattr(qc.Renderer, "question_base", lambda self, label, *a, **k: labels.append(label) or orig_q(self, label, *a, **k))
     monkeypatch.setattr(qc.Renderer, "answer_group_card", lambda self, label, *a, **k: labels.append(label) or orig_a(self, label, *a, **k))
     result = qc.build(ws, slug, round_id="r1", log=lambda *_: None)
-    assert labels[:3] == ["Вопрос 1.1 из 3", "Вопрос 1.2 из 3", "Вопрос 1.3 из 3"]
-    assert set(labels[3:]) == {"Ответ 1 из 1"}
-    expected = (t["round"] + 3 * (t["gap"] + t["question"]) + t["answers_card"] + 3 * 2 + t["answer_gap"])
+    # ответ на исполнителя сразу после его трёх вопросов, без заставки «Ответы»
+    assert [k for k, _ in itertools.groupby(labels)] == [
+        "Вопрос 1.1 из 2", "Вопрос 1.2 из 2", "Вопрос 1.3 из 2", "Ответ 1 из 2",
+        "Вопрос 2.1 из 2", "Вопрос 2.2 из 2", "Вопрос 2.3 из 2", "Ответ 2 из 2"]
+    expected = t["round"] + 6 * (3 + t["question"]) + 2 * (3 * 2 + t["answer_gap"])
     assert abs(result["duration"] - expected) < 0.1
     assert "1. Группа — Раз, Два, Три" in result["description_text"]
     shots = qc.preview(ws, slug, log=lambda *_: None)["images"]

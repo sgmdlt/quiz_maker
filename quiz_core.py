@@ -235,6 +235,11 @@ def answer_seconds(project, rnd):
     return float(rnd.get("answer_seconds") or project["timing"]["answer"])
 
 
+def gap_seconds(project, rnd):
+    """Пауза перед отсчётом вопроса: своя у тура (можно 0) или общая."""
+    return float(rnd["gap"] if rnd.get("gap") is not None else project["timing"]["gap"])
+
+
 def answer_groups(rnd, items):
     """Группы на слайд ответа: в «Трёх попытках» по три подряд (один исполнитель), иначе по одному."""
     k = 3 if rnd.get("three_tries") else 1
@@ -1061,17 +1066,17 @@ class Renderer:
         d = ImageDraw.Draw(img)
         font, lines = fit_text(d, group_answer(rows) or " ", self.W * 0.86, self.u * 0.09, self.u * 0.05, 2, self.hf)
         y = draw_lines(d, lines, font, self.cx, header_bottom + self.u * 0.03, self.c("text"))
+        y += self.u * 0.13  # отступ между исполнителем и песнями
         horizontal = self.W >= self.H
         n = len(rows)
         if horizontal:  # колонки: обложка, под ней название и альбом · год
             col_w = self.W * 0.88 / 3
-            text_h = self.u * 0.28  # под обложкой до двух строк названия и двух строк альбома
-            size = int(min(col_w * 0.75, (self.H - y) * 0.5))
-            top = y + (self.H - y - size - text_h) / 2
+            size = int(min(col_w * 0.75, (self.H - y) * 0.5))  # ниже место под две строки названия и альбома
+            top = y
         else:  # строки: обложка слева, тексты справа
             size = int(min(self.W * 0.3, (self.H - y) * 0.8 / 3))
             row_h = size + self.u * 0.05
-            top = y + (self.H - y - row_h * n) / 2
+            top = y + (self.H - y - row_h * n) / 3  # чуть выше середины оставшегося места
         for k, row in enumerate(rows[:shown]):
             cover = None
             if row.get("cover_file"):
@@ -1093,7 +1098,7 @@ class Renderer:
             ty = draw_lines(d, ls, f, tx, ty, self.c("accent"), anchor)
             if release:
                 f, ls = fit_text(d, release, max_w, self.u * 0.035, self.u * 0.026, 2, self.tf)
-                draw_lines(d, ls, f, tx, ty + self.u * 0.01, self.c("muted"), anchor)
+                draw_lines(d, ls, f, tx, ty + self.u * 0.003, self.c("muted"), anchor)  # альбом ближе к названию
         return img
 
     def answer_overlay(self, label, row, side=("", "")):
@@ -1545,12 +1550,14 @@ def preview(ws, slug, track_id=None, log=print):
     out_dir.mkdir(parents=True, exist_ok=True)
     round_vals = text_values(len(in_round) or 1, question_seconds(project, rnd), round=rnd["title"],
                              round_n=project["rounds"].index(rnd) + 1)
+    if rnd.get("three_tries"):  # всего — исполнителей
+        round_vals["total"] = len(answer_groups(rnd, in_round)) or 1
     label_vals = dict(round_vals, n=index)
-    group_vals = dict(round_vals, n=pos // 3 + 1, total=len(answer_groups(rnd, in_round)) or 1)
+    group_vals = dict(round_vals, n=pos // 3 + 1)
     base = r.question_base(fmt(texts["question_label"], **label_vals),
                            fmt(row.get("question") or texts["prompt"], **label_vals), row.get("hint", ""),
                            round_side(texts, label_vals))
-    pre = round(timing["gap"] * FPS)  # как в ролике: пауза с полным кольцом перед отсчётом
+    pre = round(gap_seconds(project, rnd) * FPS)  # как в ролике: пауза с полным кольцом перед отсчётом
     levels = np.concatenate([np.zeros((pre, levels.shape[1]), dtype=levels.dtype), levels])
     reveal_s = min(r.ring.cfg.reveal_seconds, pre / FPS) if pre else r.ring.cfg.reveal_seconds
     reveal_i = min(pre + q_frames - 1, int(reveal_s * FPS * 0.45))
@@ -1703,6 +1710,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         for row in rs:
             row["q_frames"] = frames_for(question_seconds(project, rnd))
             row["a_frames"] = frames_for(answer_seconds(project, rnd))
+            row["gap_frames"] = round(gap_seconds(project, rnd) * FPS)
             if row["start2"] is not None:  # два фрагмента по половине + пауза между ними
                 row["q_frames"] += frames_for(SPLIT_PAUSE)
     renderer = make_renderer(ws, project)
@@ -1713,7 +1721,6 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     intro = (fmt(texts["intro_title"], **vals), fmt(texts["intro_subtitle"], **vals), 8)
     outro = (fmt(texts["outro_title"], **vals), fmt(texts["outro_subtitle"], **vals))
 
-    gap_frames = round(timing["gap"] * FPS)  # пауза перед отсчётом каждого вопроса
     answer_gap_frames = round(timing["answer_gap"] * FPS)  # пауза после каждого ответа
 
     def card_frames(key, title):  # пустой заголовок или нулевая длительность — экрана нет
@@ -1804,25 +1811,35 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
                          round_n=project["rounds"].index(rnd) + 1)
         labels = question_labels(rnd, rs)
         groups = answer_groups(rnd, list(range(first, first + len(rs))))
+        if rnd.get("three_tries"):  # «Вопрос 1.2 из 5»: всего — исполнителей
+            rv["total"] = len(groups)
         idx = list(zip(labels, range(first, first + len(rs))))
         first += len(rs)
         chapters_at[len(timeline)] = rnd["title"] or f"Тур {k}"
         rules = fmt(rnd["rules"], **rv)
         narration = fmt(rnd.get("narration") or "", **rv) or "\n".join(p for p in (rnd["title"], rules) if p)
         add_card("round", (rnd["title"], rules, 8), narration, rnd.get("music", ""))
-        for qn, i in idx:
-            audio = np.concatenate([np.zeros((gap_frames * SAMPLES_PER_FRAME, 2), dtype=np.float32), fragments[i][0]])
-            timeline.append(("question", gap_frames + rows[i]["q_frames"], audio, (i, dict(rv, n=qn))))
-        card = (fmt(texts["answers_title"], **rv), fmt(texts["answers_subtitle"], **rv))
-        chapters_at[len(timeline)] = card[0] or f"Ответы · {rnd['title'] or f'Тур {k}'}"
-        add_card("answers_card", card, fmt(texts["answers_narration"], **rv), rnd.get("music", ""))
-        if rnd.get("three_tries"):  # слайд на исполнителя: песни появляются по очереди, каждая под свой отрывок
+        qn = {i: n for n, i in idx}
+
+        def add_question(i):
+            pause = rows[i]["gap_frames"]  # пауза перед отсчётом
+            audio = np.concatenate([np.zeros((pause * SAMPLES_PER_FRAME, 2), dtype=np.float32), fragments[i][0]])
+            timeline.append(("question", pause + rows[i]["q_frames"], audio, (i, dict(rv, n=qn[i]))))
+
+        if rnd.get("three_tries"):  # после каждых трёх вопросов — слайд исполнителя, песни под свои отрывки
             for g, group in enumerate(groups, start=1):
+                for i in group:
+                    add_question(i)
                 parts = [answer_audio(rows[i], *fragments[i][1:]) for i in group]
                 audio = None if parts[0] is None else np.concatenate(parts)
                 frames = sum(rows[i]["a_frames"] for i in group) + answer_gap_frames
-                timeline.append(("group", frames, audio, (group, dict(rv, n=g, total=len(groups)))))
+                timeline.append(("group", frames, audio, (group, dict(rv, n=g))))
             continue
+        for _, i in idx:
+            add_question(i)
+        card = (fmt(texts["answers_title"], **rv), fmt(texts["answers_subtitle"], **rv))
+        chapters_at[len(timeline)] = card[0] or f"Ответы · {rnd['title'] or f'Тур {k}'}"
+        add_card("answers_card", card, fmt(texts["answers_narration"], **rv), rnd.get("music", ""))
         for qn, i in idx:
             row = rows[i]
             audio = answer_audio(row, *fragments[i][1:])
@@ -1894,7 +1911,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
                                                   fmt(row["question"] or texts["prompt"], **lv), row["hint"],
                                                   round_side(texts, lv))
                     levels = analyze(audio.mean(axis=1), SAMPLE_RATE, frames_n, FPS, ring_cfg)
-                    writer.segment(renderer.question_frames(base, levels, row["q_frames"], gap_frames), frames_n)
+                    writer.segment(renderer.question_frames(base, levels, row["q_frames"], row["gap_frames"]), frames_n)
                 elif kind == "group":
                     group, lv = data
                     cards = [renderer.answer_group_card(fmt(texts["answer_label"], **lv), [rows[i] for i in group],
@@ -1934,9 +1951,9 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         t += frames_n / FPS
     chapters[0] = (0.0, chapters[0][1])  # YouTube: первая глава с 0:00
     desc_lines += [f"{fmt_ts(ts)} {name}" for ts, name in chapters] + ["", "Ответы:"]
-    for (rnd, rs), (_, name) in zip(rounds, chapters[::2]):
+    for k, (rnd, rs) in enumerate(rounds, start=1):
         if len(rounds) > 1:
-            desc_lines.append(name)
+            desc_lines.append(rnd["title"] or f"Тур {k}")
         if rnd.get("three_tries"):
             desc_lines += [f"{g}. {group_answer(grp)} — {', '.join(r['title'] for r in grp)}"
                            for g, grp in enumerate(answer_groups(rnd, rs), start=1)]
