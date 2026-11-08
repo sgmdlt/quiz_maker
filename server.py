@@ -31,13 +31,22 @@ from spectrum_ring import config_schema
 WEB_DIR = Path(__file__).resolve().parent / "web"
 MAX_UPLOAD = 1 << 30  # 1 ГБ
 
-for ext, mime in {".webm": "audio/webm", ".opus": "audio/ogg", ".m4a": "audio/mp4", ".flac": "audio/flac",
-                  ".ttf": "font/ttf", ".otf": "font/otf", ".mka": "audio/x-matroska", ".mp3": "audio/mpeg",
-                  ".webp": "image/webp"}.items():
+for ext, mime in {
+    ".webm": "audio/webm",
+    ".opus": "audio/ogg",
+    ".m4a": "audio/mp4",
+    ".flac": "audio/flac",
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
+    ".mka": "audio/x-matroska",
+    ".mp3": "audio/mpeg",
+    ".webp": "image/webp",
+}.items():
     mimetypes.add_type(mime, ext)
 
 
 # ───────────────────────── фоновые задачи ─────────────────────────
+
 
 class Job:
     def __init__(self, kind, slug):
@@ -49,7 +58,7 @@ class Job:
         self.result = self.error = None
         self.cancel = threading.Event()
         self.started, self.finished = time.time(), None
-        self.tracks = {}           # для скачивания: состояние каждого трека
+        self.tracks = {}  # для скачивания: состояние каждого трека
         self.params = {}
         self.rerun = False
 
@@ -59,10 +68,20 @@ class Job:
             self.stage = stage
 
     def to_dict(self):
-        return {"id": self.id, "kind": self.kind, "slug": self.slug, "state": self.state,
-                "progress": round(self.progress, 4), "stage": self.stage, "log": list(self.log)[-200:],
-                "result": self.result, "error": self.error, "tracks": self.tracks,
-                "started": self.started, "finished": self.finished}
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "slug": self.slug,
+            "state": self.state,
+            "progress": round(self.progress, 4),
+            "stage": self.stage,
+            "log": list(self.log)[-200:],
+            "result": self.result,
+            "error": self.error,
+            "tracks": self.tracks,
+            "started": self.started,
+            "finished": self.finished,
+        }
 
 
 class Jobs:
@@ -72,8 +91,9 @@ class Jobs:
 
     def running(self, slug, kind):
         with self.lock:
-            return next((j for j in self.jobs.values()
-                         if j.slug == slug and j.kind == kind and j.state == "running"), None)
+            return next(
+                (j for j in self.jobs.values() if j.slug == slug and j.kind == kind and j.state == "running"), None
+            )
 
     def start(self, kind, slug, fn, params=None):
         with self.lock:
@@ -112,6 +132,7 @@ class Jobs:
 
 
 # ───────────────────────── действия ─────────────────────────
+
 
 class App:
     def __init__(self, ws):
@@ -152,14 +173,28 @@ class App:
                     continue
                 desc = p.with_name(p.stem + "_description.txt")
                 thumb = p.with_name(p.stem + "_thumbnail.jpg")
-                outputs.append({"video": self.ws.rel(p), "size": p.stat().st_size, "time": p.stat().st_mtime,
-                                "thumbnail": self.ws.rel(thumb) if thumb.exists() else None,
-                                "description_text": desc.read_text(encoding="utf-8") if desc.exists() else ""})
-        return {"slug": slug, "project": project, "status": self.track_status(project, slug),
-                "clips": sc.clip_lengths(project),
-                "jobs": self.jobs.for_project(slug), "outputs": outputs,
-                "library": {"font": self.ws.library_files("font"), "image": self.ws.library_files("image"),
-                            "music": self.ws.library_files("music")}}
+                outputs.append(
+                    {
+                        "video": self.ws.rel(p),
+                        "size": p.stat().st_size,
+                        "time": p.stat().st_mtime,
+                        "thumbnail": self.ws.rel(thumb) if thumb.exists() else None,
+                        "description_text": desc.read_text(encoding="utf-8") if desc.exists() else "",
+                    }
+                )
+        return {
+            "slug": slug,
+            "project": project,
+            "status": self.track_status(project, slug),
+            "clips": sc.clip_lengths(project),
+            "jobs": self.jobs.for_project(slug),
+            "outputs": outputs,
+            "library": {
+                "font": self.ws.library_files("font"),
+                "image": self.ws.library_files("image"),
+                "music": self.ws.library_files("music"),
+            },
+        }
 
     # --- задачи ---
 
@@ -169,8 +204,9 @@ class App:
             return running
 
         def run(job):
-            result = q.download_tracks(self.ws, slug, ids, log=job.log.append, states=job.tracks,
-                                       progress=job.set_progress, cancel=job.cancel)
+            result = q.download_tracks(
+                self.ws, slug, ids, log=job.log.append, states=job.tracks, progress=job.set_progress, cancel=job.cancel
+            )
             job.stage = f"Скачано {result['downloaded']}" + (f", ошибок {result['failed']}" if result["failed"] else "")
             return result
 
@@ -178,8 +214,16 @@ class App:
 
     def start_covers(self, slug, ids=None, forget=False):
         def run(job):
-            return q.find_covers(self.ws, slug, set(ids) if ids else None, log=job.log.append,
-                                 progress=job.set_progress, cancel=job.cancel, forget=forget)
+            return q.find_covers(
+                self.ws,
+                slug,
+                set(ids) if ids else None,
+                log=job.log.append,
+                progress=job.set_progress,
+                cancel=job.cancel,
+                forget=forget,
+            )
+
         return self.jobs.start("covers", slug, run)
 
     def start_preview(self, slug, track_id=None):
@@ -197,6 +241,7 @@ class App:
                 result["version"] = int(time.time() * 1000)
                 if not job.rerun:
                     return result
+
         return self.jobs.start("preview", slug, run, {"track_id": track_id})
 
     def start_build(self, slug, limit=None, round_id=None, narration="voiced"):
@@ -204,14 +249,24 @@ class App:
             raise q.QuizError("Сборка уже идёт")
 
         def run(job):
-            return q.build(self.ws, slug, limit=limit, log=job.log.append, progress=job.set_progress,
-                           cancel=job.cancel, round_id=round_id, narration=narration)
+            return q.build(
+                self.ws,
+                slug,
+                limit=limit,
+                log=job.log.append,
+                progress=job.set_progress,
+                cancel=job.cancel,
+                round_id=round_id,
+                narration=narration,
+            )
+
         return self.jobs.start("build", slug, run, {"limit": limit, "round": round_id, "narration": narration})
 
     def start_sheet(self, slug):
         def run(job):
             job.set_progress(0.1, "Ищу обложки и рисую ответы")
             return {"image": q.answers_sheet(self.ws, slug, log=job.log.append), "version": int(time.time() * 1000)}
+
         return self.jobs.start("sheet", slug, run)
 
 
@@ -224,6 +279,7 @@ def route(method, pattern):
     def deco(fn):
         ROUTES.append((method, re.compile(f"^{pattern}$"), fn))
         return fn
+
     return deco
 
 
@@ -350,6 +406,7 @@ class Handler(BaseHTTPRequestHandler):
 
 # --- страница ---
 
+
 @route("GET", "/")
 def page(h):
     h.serve_file(WEB_DIR / "index.html")
@@ -367,11 +424,21 @@ def media(h, rel):
 
 # --- общее ---
 
+
 @route("GET", "/api/state")
 def state(h):
-    h.send_json({"projects": h.ws.list_projects(), "tools": None, "settings": h.ws.settings(),
-                 "placeholders": q.TEXT_PLACEHOLDERS, "defaults": q.DEFAULT_PROJECT, "voices": q.VOICES,
-                 "viz": config_schema(), "root": str(h.ws.root)})
+    h.send_json(
+        {
+            "projects": h.ws.list_projects(),
+            "tools": None,
+            "settings": h.ws.settings(),
+            "placeholders": q.TEXT_PLACEHOLDERS,
+            "defaults": q.DEFAULT_PROJECT,
+            "voices": q.VOICES,
+            "viz": config_schema(),
+            "root": str(h.ws.root),
+        }
+    )
 
 
 @route("GET", "/api/tools")
@@ -406,8 +473,17 @@ def upload(h):
     slug = h.query.get("project")
     if kind == "audio" and slug:
         meta = q.local_meta(h.ws.resolve(rel))
-        h.ws.add_tracks(slug, [{"file": rel, **{k: meta[k] for k in ("title", "artist", "album", "year")},
-                                "duration": meta["duration"], "round": h.query.get("round", "")}])
+        h.ws.add_tracks(
+            slug,
+            [
+                {
+                    "file": rel,
+                    **{k: meta[k] for k in ("title", "artist", "album", "year")},
+                    "duration": meta["duration"],
+                    "round": h.query.get("round", ""),
+                }
+            ],
+        )
     h.send_json(result)
 
 
@@ -426,6 +502,7 @@ def wave(h):
 
 
 # --- проекты ---
+
 
 @route("POST", "/api/projects")
 def create_project(h):
@@ -470,8 +547,9 @@ def patch_track(h, slug, tid):
         fields_.update(file="", thumb="", duration=None, error="", cover_auto="", cover_source="")
     project = h.ws.patch_track(slug, tid, fields_, internal="url" in data)
     track = next(t for t in project["tracks"] if t["id"] == tid)
-    h.send_json({"track": track, "status": h.app.track_status(project, slug)[tid],
-                 "clips": sc.clip_lengths(h.ws.load(slug))})
+    h.send_json(
+        {"track": track, "status": h.app.track_status(project, slug)[tid], "clips": sc.clip_lengths(h.ws.load(slug))}
+    )
 
 
 @route("DELETE", "/api/projects/([\\w-]+)/tracks/([\\w]+)")
@@ -500,8 +578,12 @@ def start_job(h, slug, kind):
         job = app.start_sheet(slug)
     else:
         limit = data.get("limit")
-        job = app.start_build(slug, int(limit) if limit else None, data.get("round") or None,
-                              "silent" if data.get("voice") is False else "voiced")
+        job = app.start_build(
+            slug,
+            int(limit) if limit else None,
+            data.get("round") or None,
+            "silent" if data.get("voice") is False else "voiced",
+        )
     h.send_json(job.to_dict())
 
 
@@ -523,11 +605,13 @@ def cancel_job(h, jid):
 
 # ───────────────────────── запуск ─────────────────────────
 
+
 class Server(ThreadingHTTPServer):
     daemon_threads = True
 
     def handle_error(self, request, client_address):
         import sys
+
         if isinstance(sys.exc_info()[1], (ConnectionResetError, BrokenPipeError, TimeoutError)):
             return  # браузер прервал загрузку (например, перемотал трек) — это нормально
         super().handle_error(request, client_address)

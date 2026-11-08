@@ -32,51 +32,51 @@ from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont
 @dataclass
 class RingConfig:
     # ── Геометрия. Размеры — в долях меньшей стороны кадра (0.1 = 108 px при 1080p) ──
-    inner_radius: float = 0.16       # радиус, от которого растут столбики
-    bar_length: float = 0.11         # максимальная длина столбика
-    min_bar_length: float = 0.006    # длина столбика в тишине (чтобы кольцо было видно)
-    bars: int = 120                  # число столбиков по кругу
-    bar_width: float = 0.55          # толщина столбика: доля шага между столбиками, 0..1
-    round_caps: bool = True          # скруглённые концы столбиков
-    base_ring_width: float = 0.004   # толщина опорной окружности под столбиками, 0 — без неё
-    base_ring_gap: float = 0.012     # зазор между опорной окружностью и столбиками
-    track_opacity: float = 0.15      # видимость «отыгранной» части окружности, 0..1
-    disc_opacity: float = 0.30       # затемнение круга под цифрами, 0..1
+    inner_radius: float = 0.16  # радиус, от которого растут столбики
+    bar_length: float = 0.11  # максимальная длина столбика
+    min_bar_length: float = 0.006  # длина столбика в тишине (чтобы кольцо было видно)
+    bars: int = 120  # число столбиков по кругу
+    bar_width: float = 0.55  # толщина столбика: доля шага между столбиками, 0..1
+    round_caps: bool = True  # скруглённые концы столбиков
+    base_ring_width: float = 0.004  # толщина опорной окружности под столбиками, 0 — без неё
+    base_ring_gap: float = 0.012  # зазор между опорной окружностью и столбиками
+    track_opacity: float = 0.15  # видимость «отыгранной» части окружности, 0..1
+    disc_opacity: float = 0.30  # затемнение круга под цифрами, 0..1
 
     # ── Спектр ──
-    min_freq: float = 40.0           # самая низкая частота, Гц
-    max_freq: float = 14000.0        # самая высокая частота, Гц
-    mirror: bool = True              # зеркально: басы сверху, высокие внизу с обеих сторон
-    fft_size: int = 4096             # размер окна FFT: больше — точнее басы, но плавнее реакция
+    min_freq: float = 40.0  # самая низкая частота, Гц
+    max_freq: float = 14000.0  # самая высокая частота, Гц
+    mirror: bool = True  # зеркально: басы сверху, высокие внизу с обеих сторон
+    fft_size: int = 4096  # размер окна FFT: больше — точнее басы, но плавнее реакция
     tilt_db_per_octave: float = 3.0  # подтяжка высоких частот (в музыке они тише)
-    db_range: float = 42.0           # динамический диапазон: что тише — нулевой столбик
-    auto_gain: bool = True           # подстраивать уровень под громкость каждого трека
-    ref_db: float = -20.0            # опорный уровень, если auto_gain = false
-    contrast: float = 1.5            # >1 — столбики «прыгучее», <1 — ровнее
-    attack: float = 0.65             # скорость роста столбика за кадр, 0..1
-    release: float = 0.2             # скорость спада столбика за кадр, 0..1
-    spatial_smooth: int = 1          # сглаживание соседних столбиков, число проходов
-    lookahead_ms: float = 40.0       # упреждение анализа: компенсирует сглаживание, чтобы удар
-                                     # на картинке совпадал со звуком
+    db_range: float = 42.0  # динамический диапазон: что тише — нулевой столбик
+    auto_gain: bool = True  # подстраивать уровень под громкость каждого трека
+    ref_db: float = -20.0  # опорный уровень, если auto_gain = false
+    contrast: float = 1.5  # >1 — столбики «прыгучее», <1 — ровнее
+    attack: float = 0.65  # скорость роста столбика за кадр, 0..1
+    release: float = 0.2  # скорость спада столбика за кадр, 0..1
+    spatial_smooth: int = 1  # сглаживание соседних столбиков, число проходов
+    lookahead_ms: float = 40.0  # упреждение анализа: компенсирует сглаживание, чтобы удар
+    # на картинке совпадал со звуком
 
     # ── Анимация ──
-    reveal_seconds: float = 1.0      # прорисовка кольца по часовой стрелке
-    reveal_easing: str = "out_cubic" # linear | out_cubic | in_out_cubic
-    edge_softness: float = 10.0      # мягкость края дуги, градусов
-    start_angle: float = 0.0         # где начинается дуга: градусы по часовой от 12 часов
+    reveal_seconds: float = 1.0  # прорисовка кольца по часовой стрелке
+    reveal_easing: str = "out_cubic"  # linear | out_cubic | in_out_cubic
+    edge_softness: float = 10.0  # мягкость края дуги, градусов
+    start_angle: float = 0.0  # где начинается дуга: градусы по часовой от 12 часов
 
     # ── Цвет и свечение ──
     colors: tuple = ("#FFC83D", "#FF8A5B")  # градиент сверху вниз; один цвет — без градиента
-    warning_color: str = "#FF4D6D"   # цвет на последних секундах
-    warning_seconds: float = 3.0     # за сколько секунд до конца краснеть, 0 — никогда
-    glow: float = 0.7                # яркость свечения, 0 — без свечения
-    glow_radius: float = 0.018       # размытие свечения
-    supersample: int = 2             # сглаживание краёв: 1 — быстро, 2 — красиво, 3 — очень
+    warning_color: str = "#FF4D6D"  # цвет на последних секундах
+    warning_seconds: float = 3.0  # за сколько секунд до конца краснеть, 0 — никогда
+    glow: float = 0.7  # яркость свечения, 0 — без свечения
+    glow_radius: float = 0.018  # размытие свечения
+    supersample: int = 2  # сглаживание краёв: 1 — быстро, 2 — красиво, 3 — очень
 
     # ── Цифры в центре ──
-    number_size: float = 1.0         # размер цифр относительно круга под ними
-    number_color: str = "#FFFFFF"    # цвет цифр
-    number_pulse: float = 0.12       # «прыжок» цифры при смене секунды, 0 — без него
+    number_size: float = 1.0  # размер цифр относительно круга под ними
+    number_color: str = "#FFFFFF"  # цвет цифр
+    number_pulse: float = 0.12  # «прыжок» цифры при смене секунды, 0 — без него
 
 
 def config_from_dict(data, source="настройках"):
@@ -84,8 +84,9 @@ def config_from_dict(data, source="настройках"):
     known = {f.name for f in fields(RingConfig)}
     unknown = sorted(set(data) - known)
     if unknown:
-        raise ValueError(f"Неизвестные параметры в {source}: {', '.join(unknown)}.\n"
-                         f"Допустимые: {', '.join(sorted(known))}")
+        raise ValueError(
+            f"Неизвестные параметры в {source}: {', '.join(unknown)}.\nДопустимые: {', '.join(sorted(known))}"
+        )
     cfg = RingConfig()
     for key, value in data.items():
         default = getattr(cfg, key)
@@ -150,6 +151,7 @@ def config_schema():
 
 
 # ───────────────────────── Анализ звука ─────────────────────────
+
 
 def _band_weights(freqs, n_bands, fmin, fmax):
     """Матрица «бин FFT → полоса» с логарифмической шкалой частот."""
@@ -220,12 +222,13 @@ def analyze(mono, sample_rate, n_frames, fps, cfg):
 
 # ───────────────────────── Рисование ─────────────────────────
 
+
 def _ease(name, x):
     x = min(1.0, max(0.0, x))
     if name == "linear":
         return x
     if name == "in_out_cubic":
-        return 4 * x ** 3 if x < 0.5 else 1 - (-2 * x + 2) ** 3 / 2
+        return 4 * x**3 if x < 0.5 else 1 - (-2 * x + 2) ** 3 / 2
     return 1 - (1 - x) ** 3  # out_cubic
 
 
@@ -273,7 +276,7 @@ class SpectrumRing:
         stops = np.array([ImageColor.getrgb(c)[:3] for c in colors], dtype=float)
         if len(stops) == 1:
             return Image.new("RGB", (self.size, self.size), tuple(int(v) for v in stops[0]))
-        yy, xx = np.mgrid[0:self.size, 0:self.size] + 0.5 - self.c
+        yy, xx = np.mgrid[0 : self.size, 0 : self.size] + 0.5 - self.c
         ang = (np.degrees(np.arctan2(xx, -yy)) - self.cfg.start_angle) % 360
         t = (180 - np.abs(180 - ang)) / 180  # 0 у начала дуги → 1 напротив, симметрично
         pos = t * (len(stops) - 1)
@@ -294,14 +297,18 @@ class SpectrumRing:
         c = S / 2
         disc = Image.new("L", (S, S), 0)
         d = ImageDraw.Draw(disc)
-        d.ellipse((c - self.disc_r * ss, c - self.disc_r * ss, c + self.disc_r * ss, c + self.disc_r * ss),
-                  fill=int(255 * self.cfg.disc_opacity))
+        d.ellipse(
+            (c - self.disc_r * ss, c - self.disc_r * ss, c + self.disc_r * ss, c + self.disc_r * ss),
+            fill=int(255 * self.cfg.disc_opacity),
+        )
         track = Image.new("L", (S, S), 0)
         if self.base_w > 0 and self.cfg.track_opacity > 0:
             rb = self.base_r * ss
-            ImageDraw.Draw(track).ellipse((c - rb, c - rb, c + rb, c + rb),
-                                          outline=int(255 * self.cfg.track_opacity),
-                                          width=max(1, round(self.base_w * ss)))
+            ImageDraw.Draw(track).ellipse(
+                (c - rb, c - rb, c + rb, c + rb),
+                outline=int(255 * self.cfg.track_opacity),
+                width=max(1, round(self.base_w * ss)),
+            )
         x0, y0, _, _ = self.box(center)
         img.paste((0, 0, 0), (x0, y0), disc.reduce(ss))
         img.paste((255, 255, 255), (x0, y0), track.reduce(ss))

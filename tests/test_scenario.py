@@ -3,8 +3,21 @@ import scenario as sc
 
 
 def _track(name, **kw):
-    return {"id": name, "path": f"/{name}.mp3", "start": 10.0, "start2": None, "title": name, "artist": f"Исп {name}",
-            "album": "", "year": "", "hint": "", "question": "", "answer": "", "answer_video": "", **kw}
+    return {
+        "id": name,
+        "path": f"/{name}.mp3",
+        "start": 10.0,
+        "start2": None,
+        "title": name,
+        "artist": f"Исп {name}",
+        "album": "",
+        "year": "",
+        "hint": "",
+        "question": "",
+        "answer": "",
+        "answer_video": "",
+        **kw,
+    }
 
 
 def _quiz(rounds, **kw):
@@ -19,8 +32,17 @@ def _slides(project, tracks_by_round, narration_seconds=lambda text: 0.0, openin
 def test_regular_round_slide_order():
     p = _quiz([{"id": "r1", "title": "Хиты"}])
     slides = _slides(p, {"r1": [_track("a"), _track("b")]})
-    assert [s.kind for s in slides] == ["quiz_intro", "rounds_list", "round_intro", "question", "question",
-                                        "answers_intro", "answer", "answer", "outro"]
+    assert [s.kind for s in slides] == [
+        "quiz_intro",
+        "rounds_list",
+        "round_intro",
+        "question",
+        "question",
+        "answers_intro",
+        "answer",
+        "answer",
+        "outro",
+    ]
 
 
 def test_three_tries_answer_after_each_triple():
@@ -29,8 +51,14 @@ def test_three_tries_answer_after_each_triple():
     kinds = [s.kind for s in slides if s.kind in ("question", "triple_answer")]
     assert kinds == ["question"] * 3 + ["triple_answer"] + ["question"] * 3 + ["triple_answer"]
     labels = [s.texts["label"] for s in slides if s.kind == "question"]
-    assert labels == ["Вопрос 1.1 из 2", "Вопрос 1.2 из 2", "Вопрос 1.3 из 2",
-                      "Вопрос 2.1 из 2", "Вопрос 2.2 из 2", "Вопрос 2.3 из 2"]
+    assert labels == [
+        "Вопрос 1.1 из 2",
+        "Вопрос 1.2 из 2",
+        "Вопрос 1.3 из 2",
+        "Вопрос 2.1 из 2",
+        "Вопрос 2.2 из 2",
+        "Вопрос 2.3 из 2",
+    ]
     triples = [s for s in slides if s.kind == "triple_answer"]
     assert [[t["title"] for t in s.tracks] for s in triples] == [["a", "b", "c"], ["d", "e", "f"]]
     assert triples[1].texts["label"] == "Ответ 2 из 2"

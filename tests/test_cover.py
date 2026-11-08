@@ -36,9 +36,15 @@ def test_grid_bleeds_past_frame_without_gaps():
 
 
 def test_rainbow_layout_columns_by_hue_greys_last(tmp_path):
-    colors = {"red": (220, 30, 30), "orange": (250, 150, 20), "green": (30, 180, 60),
-              "blue": (30, 60, 220), "white": (245, 245, 245), "grey": (120, 120, 120),
-              "dark": (40, 40, 40)}
+    colors = {
+        "red": (220, 30, 30),
+        "orange": (250, 150, 20),
+        "green": (30, 180, 60),
+        "blue": (30, 60, 220),
+        "white": (245, 245, 245),
+        "grey": (120, 120, 120),
+        "dark": (40, 40, 40),
+    }
     paths = {k: _solid(tmp_path / f"{k}.png", v) for k, v in colors.items()}
     grid = cover.rainbow_layout(list(paths.values()), cols=3, rows=2)
     assert len(grid) == 6
