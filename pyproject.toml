@@ -22,6 +22,7 @@ package = false
 
 [dependency-groups]
 dev = [
+    "deptry==0.25.1",
     "pytest>=9.2.0",
     "ruff>=0.17.4",
 ]
@@ -35,3 +36,7 @@ line-length = 120  # как в коде проекта
 [tool.ruff.lint]
 # намеренно: широкие except там, где сбой внешнего инструмента не должен ронять работу; check=False — это и так значение по умолчанию
 ignore = ["BLE001", "S110", "S112", "PLW1510"]
+
+[tool.deptry.per_rule_ignores]
+# deno — JavaScript-движок для yt-dlp: им пользуется yt-dlp как программой, импорта в коде нет
+DEP002 = ["deno"]

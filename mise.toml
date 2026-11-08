@@ -15,6 +15,7 @@ description = "Все проверки: то же самое запускает 
 run = [
   "hk check --all",
   "betterleaks git --redact --no-banner .",  # секреты во всей истории git
+  "deptry .",  # неиспользуемые и недостающие зависимости
   "uv run pytest -q",
 ]
 
