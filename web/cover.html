@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Обложка для соцсетей</title>
+<style>
+  :root { --bg: #1A1230; --panel: #241a40; --line: #3a2e5c; --text: #f3eefc; --muted: #a99cc8; --accent: #FFC83D; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px "Ubuntu Sans", system-ui, sans-serif;
+         display: grid; grid-template-columns: 360px 1fr; height: 100vh; }
+  aside { overflow-y: auto; padding: 12px 14px 40px; border-right: 1px solid var(--line); background: var(--panel); }
+  main { padding: 16px; overflow: auto; }
+  canvas { width: 100%; height: auto; display: block; border-radius: 6px; box-shadow: 0 6px 30px #0008; }
+  h1 { font-size: 16px; margin: 4px 0 10px; color: var(--accent); }
+  details { border-top: 1px solid var(--line); padding: 6px 0; }
+  summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+  label { display: grid; grid-template-columns: 120px 1fr 52px; gap: 8px; align-items: center; margin: 5px 0; }
+  label.wide { grid-template-columns: 120px 1fr; }
+  label span { color: var(--muted); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=number], input[type=text], input:not([type]) { width: 100%; background: var(--bg); color: var(--text);
+         border: 1px solid var(--line); border-radius: 4px; padding: 3px 5px; font: inherit; }
+  input[type=color] { width: 100%; height: 26px; background: none; border: 1px solid var(--line); border-radius: 4px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+  button, .file { background: var(--accent); color: #1A1230; border: 0; border-radius: 5px; padding: 6px 10px;
+         font: inherit; font-weight: 600; cursor: pointer; }
+  button.ghost, .file { background: transparent; color: var(--text); border: 1px solid var(--line); }
+  .file input { display: none; }
+  #status { color: var(--muted); font-size: 12px; min-height: 1em; }
+</style>
+</head>
+<body>
+<aside>
+  <h1>Обложка для соцсетей <span id="slug"></span></h1>
+  <div class="buttons">
+    <button id="png">Скачать PNG</button>
+    <button class="ghost" id="logoPng">Логотип PNG</button>
+    <button id="toQuiz">Сохранить в квиз</button>
+    <button id="toTheme">Сохранить логотип в оформление</button>
+    <label class="file">Загрузить шрифт<input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2"></label>
+    <button class="ghost" id="reset">Сбросить</button>
+  </div>
+  <div id="status"></div>
+  <div id="form"></div>
+  <datalist id="fonts"></datalist>
+</aside>
+<main><canvas id="cv" width="1920" height="1080"></canvas></main>
+
+<script>
+const $ = s => document.querySelector(s);
+const cv = $("#cv"), ctx = cv.getContext("2d");
+let info, S = {}, covers = [];
+
+// ── схема настроек: [ключ, подпись, тип, мин, макс, шаг] ──
+const SCHEMA = [
+  ["Коллаж", [
+    ["gap", "Отступ", "range", 0, 80, 1], ["radius", "Скругление", "range", 0, 80, 1],
+    ["shadow", "Тень", "range", 0, 1, 0.05],
+    ["stagger", "Сдвиг через столбец", "range", 0, 1, 0.01], ["stair", "Сдвиг лесенкой", "range", -1, 1, 0.01],
+    ["bg_top", "Фон сверху", "color"], ["bg_bottom", "Фон снизу", "color"]]],
+  ["Засвет", [
+    ["wedge_top", "Клин сверху", "range", 0, 1, 0.01], ["wedge_bottom", "Клин снизу", "range", 0, 1, 0.01],
+    ["wedge_soft", "Мягкость края", "range", 0, 300, 1], ["wedge_alpha", "Сила клина", "range", 0, 1, 0.01],
+    ["wedge_color", "Цвет засвета", "color"],
+    ["band_h", "Подложка: высота", "range", 0, 700, 1], ["band_soft", "Подложка: мягкость", "range", 0, 500, 1],
+    ["band_alpha", "Подложка: сила", "range", 0, 1, 0.01]]],
+  ["Логотип", [
+    ["bars", "Столбиков", "range", 3, 61, 2], ["bar_width", "Толщина", "range", 0.05, 1, 0.01],
+    ["len_min", "Длина мин.", "range", 0, 400, 1], ["len_max", "Длина макс.", "range", 0, 400, 1],
+    ["seed", "Узор (сид)", "range", 0, 500, 1],
+    ["ring_r", "Радиус кольца", "range", 10, 400, 1], ["ring_w", "Ширина кольца", "range", 0, 80, 1],
+    ["ring_gap", "Зазор до кольца", "range", -40, 80, 1],
+    ["color1", "Цвет у основания", "color"], ["color2", "Цвет на концах", "color"],
+    ["glow", "Свечение", "range", 0, 1, 0.01], ["glow_r", "Радиус свечения", "range", 0, 80, 1],
+    ["logo_x", "X", "range", 0, 1920, 1], ["logo_y", "Y (основание)", "range", 0, 1080, 1],
+    ["logo_scale", "Масштаб", "range", 0.1, 3, 0.01]]],
+  ["Название", [
+    ["name_text", "Текст", "text"], ["name_font", "Шрифт", "font"],
+    ["name_size", "Размер", "range", 10, 400, 1], ["name_spacing", "Интервал", "range", -20, 80, 0.5],
+    ["name_color", "Цвет", "color"], ["name_x", "X", "range", 0, 1920, 1], ["name_y", "Y", "range", 0, 1080, 1]]],
+  ["Тема", [
+    ["theme_text", "Текст", "text"], ["theme_font", "Шрифт", "font"],
+    ["theme_size", "Размер", "range", 10, 400, 1], ["theme_spacing", "Интервал", "range", -20, 80, 0.5],
+    ["theme_color", "Цвет", "color"], ["theme_x", "X", "range", 0, 1920, 1], ["theme_y", "Y", "range", 0, 1080, 1]]],
+];
+
+function defaults() {
+  const d = info.defaults, st = d.style, font = info.fonts.includes("MartianGrotesk-StdBd.ttf") ? "MartianGrotesk-StdBd.ttf" : "sans-serif";
+  return {
+    gap: 24, radius: 18, shadow: 0.3, stagger: 0, stair: 0, bg_top: st.bg_top, bg_bottom: st.bg_bottom,
+    wedge_top: 0.46, wedge_bottom: 0.30, wedge_soft: 60, wedge_alpha: 0.8, wedge_color: st.bg_top,
+    band_h: 300, band_soft: 150, band_alpha: 0.92,
+    bars: 19, bar_width: 0.62, len_min: 60, len_max: 150, seed: 11, ring_r: 120, ring_w: 18, ring_gap: 10,
+    color1: "#FFD000", color2: "#FF7A00", glow: 0.6, glow_r: 14, logo_x: 380, logo_y: 420, logo_scale: 0.9,
+    name_text: "Groove Quiz", name_font: font, name_size: 76, name_spacing: 0, name_color: st.text, name_x: 380, name_y: 520,
+    theme_text: d.theme, theme_font: font, theme_size: 112, theme_spacing: 0, theme_color: st.text, theme_x: 960, theme_y: 960,
+  };
+}
+
+// ── форма ──
+function buildForm() {
+  const form = $("#form");
+  form.innerHTML = "";
+  SCHEMA.forEach(([title, fields], gi) => {
+    const det = document.createElement("details");
+    det.open = gi >= 2;
+    det.innerHTML = `<summary>${title}</summary>`;
+    for (const [key, label, type, min, max, step] of fields) {
+      const row = document.createElement("label");
+      const inp = document.createElement("input");
+      if (type === "range") {
+        Object.assign(inp, { type, min, max, step });
+        const num = Object.assign(document.createElement("input"), { type: "number", min, max, step });
+        inp.value = num.value = S[key];
+        inp.oninput = () => { num.value = inp.value; set(key, +inp.value); };
+        num.oninput = () => { inp.value = num.value; set(key, +num.value); };
+        row.innerHTML = `<span>${label}</span>`;
+        row.append(inp, num);
+      } else {
+        row.className = "wide";
+        if (type === "color") inp.type = "color";
+        if (type === "font") inp.setAttribute("list", "fonts");
+        inp.value = S[key];
+        inp.oninput = () => set(key, inp.value);
+        row.innerHTML = `<span>${label}</span>`;
+        row.append(inp);
+      }
+      det.append(row);
+    }
+    form.append(det);
+  });
+  $("#fonts").innerHTML = info.fonts.map(f => `<option value="${f}">`).join("");
+}
+
+let saveTimer;
+function set(key, value) {
+  S[key] = value;
+  draw();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => fetch("/api/settings", { method: "PUT", headers: { "X-Quiz": "1" }, body: JSON.stringify(S) })
+    .then(r => status(r.ok ? "Сохранено" : "Не сохранилось")), 400);
+}
+const status = t => $("#status").textContent = t;
+
+// ── шрифты: файл из library/fonts грузим как FontFace, иначе — системное имя ──
+const loaded = {};
+function family(value) {
+  if (!/\.(ttf|otf|woff2?)$/i.test(value)) return value;
+  const fam = "f_" + value.replace(/\W/g, "_");
+  if (!loaded[fam]) {
+    loaded[fam] = new FontFace(fam, `url(/fonts/${encodeURIComponent(value)})`);
+    loaded[fam].load().then(f => { document.fonts.add(f); draw(); });
+  }
+  return fam;
+}
+
+// ── рисование ──
+function rng(seed) {  // mulberry32: один и тот же узор при одном сиде
+  return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+}
+
+function drawCollage() {
+  const { cols, rows, tile } = info.layout, W = cv.width, H = cv.height;
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, S.bg_top); bg.addColorStop(1, S.bg_bottom);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+  const t = tile - S.gap, ox = (W - cols * tile + S.gap) / 2, oy = (H - rows * tile + S.gap) / 2;
+  // сдвиг столбца в долях плитки: чётные вверх, нечётные вниз + лесенка; столбец закольцован,
+  // чтобы у краёв кадра не было дыр
+  for (let c = 0; c < cols; c++) {
+    const shift = ((c % 2 ? 0.5 : -0.5) * S.stagger + (c - (cols - 1) / 2) * S.stair) * tile;
+    const d = ((shift % tile) + tile) % tile, k0 = Math.round(shift / tile - d / tile);
+    for (let r = -1; r <= rows; r++) {
+      const img = covers[(((r - k0) % rows) + rows) % rows * cols + c];
+      const x = ox + c * tile, y = oy + r * tile + d;
+      if (!img || !img.complete || !img.naturalWidth || y > H || y + t < 0) continue;
+      const s = Math.min(img.naturalWidth, img.naturalHeight);
+      ctx.save();
+      ctx.shadowColor = `rgba(40,20,30,${S.shadow})`; ctx.shadowBlur = 16; ctx.shadowOffsetY = 5;
+      ctx.beginPath(); ctx.roundRect(x, y, t, t, S.radius); ctx.fillStyle = "#000"; ctx.fill();
+      ctx.shadowColor = "transparent"; ctx.clip();
+      ctx.drawImage(img, (img.naturalWidth - s) / 2, (img.naturalHeight - s) / 2, s, s, x, y, t, t);
+      ctx.restore();
+    }
+  }
+}
+
+function drawHaze() {
+  const W = cv.width, H = cv.height, off = new OffscreenCanvas(W, H), o = off.getContext("2d");
+  o.filter = `blur(${S.wedge_soft / 2}px)`;
+  o.fillStyle = S.wedge_color;
+  o.beginPath(); o.moveTo(-200, -200); o.lineTo(S.wedge_top * W, -200); o.lineTo(S.wedge_bottom * W, H + 200); o.lineTo(-200, H + 200);
+  o.fill();
+  ctx.save(); ctx.globalAlpha = S.wedge_alpha; ctx.drawImage(off, 0, 0); ctx.restore();
+  const top = H - S.band_h, g = ctx.createLinearGradient(0, top, 0, Math.min(H, top + S.band_soft));
+  const c = S.wedge_color;
+  g.addColorStop(0, c + "00"); g.addColorStop(1, c + Math.round(S.band_alpha * 255).toString(16).padStart(2, "0"));
+  ctx.fillStyle = g; ctx.fillRect(0, top, W, S.band_h);
+}
+
+// логотип: полукруг столбиков, левая половина — зеркало правой; (cx, cy) — центр основания
+function drawLogo(c, cx, cy, k) {
+  const n = S.bars, half = Math.ceil(n / 2), r = rng(S.seed), lv = [];
+  for (let i = 0; i < half; i++) lv.push(0.25 + 0.75 * r());
+  lv[half - 1] = 1;  // в центре — самый длинный
+  const levels = n % 2 ? [...lv, ...lv.slice(0, -1).reverse()] : [...lv, ...lv.reverse()];
+  const R = S.ring_r * k, step = Math.PI / (n + 1), bw = Math.max(1, R * step * S.bar_width);
+  const grad = c.createRadialGradient(cx, cy, R, cx, cy, R + S.len_max * k);
+  grad.addColorStop(0, S.color1); grad.addColorStop(1, S.color2);
+  const paint = () => {
+    c.strokeStyle = grad; c.lineCap = "butt";
+    c.lineWidth = bw; c.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = Math.PI - step * (i + 1), len = (S.len_min + levels[i] * (S.len_max - S.len_min)) * k;
+      c.moveTo(cx + R * Math.cos(a), cy - R * Math.sin(a));
+      c.lineTo(cx + (R + len) * Math.cos(a), cy - (R + len) * Math.sin(a));
+    }
+    c.stroke();
+    if (S.ring_w > 0) {
+      c.strokeStyle = S.color1; c.lineWidth = S.ring_w * k; c.beginPath();
+      c.arc(cx, cy, Math.max(1, R - (S.ring_gap + S.ring_w / 2) * k), Math.PI, 2 * Math.PI); c.stroke();
+    }
+  };
+  c.save();
+  if (S.glow > 0) { c.shadowColor = S.color1 + Math.round(S.glow * 255).toString(16).padStart(2, "0"); c.shadowBlur = S.glow_r * k; }
+  paint();
+  c.restore();
+}
+
+function drawText(prefix) {
+  ctx.save();
+  ctx.font = `${S[prefix + "_size"]}px "${family(S[prefix + "_font"])}"`;
+  ctx.letterSpacing = `${S[prefix + "_spacing"]}px`;
+  ctx.fillStyle = S[prefix + "_color"]; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(S[prefix + "_text"], S[prefix + "_x"], S[prefix + "_y"]);
+  ctx.restore();
+}
+
+function draw() {
+  drawCollage();
+  drawHaze();
+  drawLogo(ctx, S.logo_x, S.logo_y, S.logo_scale);
+  drawText("name");
+  drawText("theme");
+}
+
+// ── выгрузка ──
+function download(canvas, name) {
+  canvas.toBlob(b => { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = name; a.click(); });
+}
+function logoCanvas() {  // логотип отдельно, на прозрачном фоне
+  const k = S.logo_scale, pad = (S.glow_r * 2 + 10) * k, R = (S.ring_r + S.len_max) * k;
+  const c = document.createElement("canvas");
+  c.width = Math.ceil(2 * (R + pad)); c.height = Math.ceil(R + 2 * pad);
+  drawLogo(c.getContext("2d"), c.width / 2, R + pad, k);
+  return c;
+}
+function upload(canvas, url, done) {
+  canvas.toBlob(async b => {
+    const r = await fetch(url, { method: "PUT", headers: { "X-Quiz": "1" }, body: b });
+    status(r.ok ? done : "Не сохранилось");
+  });
+}
+$("#png").onclick = () => download(cv, `cover-${info.slug}.png`);
+$("#logoPng").onclick = () => download(logoCanvas(), "logo.png");
+$("#toQuiz").onclick = () => upload(cv, "/api/cover", "Обложка сохранена: ролик начнётся с неё");
+$("#toTheme").onclick = () => upload(logoCanvas(), "/api/logo", "Логотип сохранён: он будет на заставках всех квизов");
+$("#reset").onclick = () => { S = defaults(); buildForm(); set("gap", S.gap); };
+$("#fontFile").onchange = async e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = await fetch(`/fonts/${encodeURIComponent(f.name)}`, { method: "PUT", headers: { "X-Quiz": "1" }, body: f });
+  const j = await r.json();
+  if (!r.ok) return status(j.error);
+  info.fonts.push(j.name);
+  $("#fonts").innerHTML = info.fonts.map(x => `<option value="${x}">`).join("");
+  status(`Шрифт ${j.name} загружен — выберите его в поле «Шрифт»`);
+};
+
+(async () => {
+  info = await (await fetch("/api/info")).json();
+  $("#slug").textContent = "· " + info.slug;
+  S = { ...defaults(), ...info.settings };
+  buildForm();
+  covers = Array.from({ length: info.covers }, (_, i) => Object.assign(new Image(), { src: `/cover/${i}`, onload: draw }));
+  draw();
+})();
+</script>
+</body>
+</html>

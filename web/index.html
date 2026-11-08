@@ -562,7 +562,7 @@ function onJobDone(kind, job) {
       if (S.pv.track === null || !S.pv.images) schedulePreview(100);
     } else if (job.state === "error") toast(job.error, true);
   } else if (kind === "covers") {
-    if (job.state === "done") toast(job.result?.offline ? "Интернет-поиск обложек не сработал: " + job.result.offline : "Обложки обновлены", !!job.result?.offline);
+    if (job.state === "done") toast(job.result?.offline ? "Интернет-поиск обложек альбомов не сработал: " + job.result.offline : "Обложки альбомов обновлены", !!job.result?.offline);
     else if (job.state === "error") toast(job.error, true);
   } else if (kind === "build") {
     if (job.state === "done") toast(`Видео готово: ${fmtTime(job.result.duration)}, собрано за ${fmtTime(job.result.seconds)}`);
@@ -712,21 +712,22 @@ function renderRounds() {
   const cur = curRound();
   S.round = cur.id;
   $("#rounds").innerHTML = `<span class="seg">${P().rounds.map((r, i) =>
-    `<button data-round="${r.id}" aria-pressed="${r.id === cur.id}">${esc(r.title || `Тур ${i + 1}`)}</button>`).join("")}</span>
-    <button class="btn small ghost" id="addRound">+ Тур</button>`;
+    `<button data-round="${r.id}" aria-pressed="${r.id === cur.id}">${esc(r.title || `Раунд ${i + 1}`)}</button>`).join("")}</span>
+    <button class="btn small ghost" id="addRound">+ Раунд</button>`;
   $("#roundPanel").innerHTML = `
-    <div class="row"><input id="roundTitle" value="${esc(cur.title)}" placeholder="Название тура (пусто — без заставки тура)" aria-label="Название тура">
-      <label class="unit" title="Секунд на вопрос в этом туре. Пусто — как в «Оформлении»"><input type="number" min="1" step="1" id="roundSeconds" style="width:90px" value="${cur.seconds ?? ""}" placeholder="${P().timing.question}" aria-label="Секунд на вопрос"></label>
-      <label class="unit" title="Секунд на ответ в этом туре (в «Трёх попытках» — на каждую песню). Пусто — как в «Оформлении»"><input type="number" min="1" step="1" id="roundAnswerSeconds" style="width:90px" value="${cur.answer_seconds ?? ""}" placeholder="${P().timing.answer}" aria-label="Секунд на ответ"></label>
-      <label class="unit" title="Пауза перед каждым вопросом в этом туре, секунд. Пусто — как в «Оформлении»"><input type="number" min="0" step="0.5" id="roundGap" style="width:90px" value="${cur.gap ?? ""}" placeholder="${P().timing.gap}" aria-label="Пауза перед вопросом"></label>
-      <label title="Три подряд идущих трека — один исполнитель: вопросы 1.1, 1.2, 1.3, ответ — один слайд на исполнителя"><input type="checkbox" id="roundThree" ${cur.three_tries ? "checked" : ""}> Три попытки</label>
-      ${P().rounds.length > 1 ? `<button class="btn small ghost" data-move="-1" title="Поставить тур раньше" aria-label="Тур раньше">←</button><button class="btn small ghost" data-move="1" title="Поставить тур позже" aria-label="Тур позже">→</button><button class="btn small ghost" id="delRound">Удалить тур</button>` : ""}</div>
-    <textarea id="roundRules" placeholder="Правила тура — показываются на его заставке" aria-label="Правила тура">${esc(cur.rules)}</textarea>
+    <div class="row"><input id="roundTitle" value="${esc(cur.title)}" placeholder="Название раунда (пусто — без слайда заставки раунда)" aria-label="Название раунда">
+      <label class="unit" title="Секунд на вопрос в этом раунде. Пусто — как в «Оформлении»"><input type="number" min="1" step="1" id="roundSeconds" style="width:90px" value="${cur.seconds ?? ""}" placeholder="${P().timing.question}" aria-label="Секунд на вопрос"></label>
+      <label class="unit" title="Секунд на ответ в этом раунде (в «Трёх попытках» — на каждый трек тройки). Пусто — как в «Оформлении»"><input type="number" min="1" step="1" id="roundAnswerSeconds" style="width:90px" value="${cur.answer_seconds ?? ""}" placeholder="${P().timing.answer}" aria-label="Секунд на ответ"></label>
+      <label class="unit" title="Пауза перед каждым вопросом в этом раунде, секунд. Пусто — как в «Оформлении»"><input type="number" min="0" step="0.5" id="roundGap" style="width:90px" value="${cur.gap ?? ""}" placeholder="${P().timing.gap}" aria-label="Пауза перед вопросом"></label>
+      <label title="Тройка вопросов — три подряд идущих трека одного исполнителя: вопросы 1.1, 1.2, 1.3 и один слайд ответа на тройку"><input type="checkbox" id="roundThree" ${cur.three_tries ? "checked" : ""}> Три попытки</label>
+      ${P().rounds.length > 1 ? `<button class="btn small ghost" data-move="-1" title="Поставить раунд раньше" aria-label="Раунд раньше">←</button><button class="btn small ghost" data-move="1" title="Поставить раунд позже" aria-label="Раунд позже">→</button><button class="btn small ghost" id="delRound">Удалить раунд</button>` : ""}</div>
+    <textarea id="roundSubtitle" placeholder="Подзаголовок — краткое описание раунда, Enter — новая строка" aria-label="Подзаголовок раунда">${esc(cur.subtitle || "")}</textarea>
+    <textarea id="roundRules" placeholder="Правила раунда — показываются на слайде его заставки" aria-label="Правила раунда">${esc(cur.rules)}</textarea>
     <textarea id="roundNarration" placeholder="Текст для диктора — пусто: читает название и правила" aria-label="Текст для диктора">${esc(cur.narration || "")}</textarea>
-    <label class="field"><span>Фоновая музыка тура — на правилах и «Ответах»</span>${musicField("roundMusic", cur.music)}</label>`;
+    <label class="field"><span>Фоновая музыка раунда — на слайдах заставки раунда и блока ответов</span>${musicField("roundMusic", cur.music)}</label>`;
   $$("#rounds [data-round]").forEach(b => b.onclick = () => { S.round = b.dataset.round; renderRounds(); renderTracksList(); showRoundPreview(); });
   $("#addRound").onclick = () => {
-    const r = { id: Math.random().toString(16).slice(2, 10), title: `Тур ${P().rounds.length + 1}`, rules: "" };
+    const r = { id: Math.random().toString(16).slice(2, 10), title: `Раунд ${P().rounds.length + 1}`, subtitle: "", rules: "" };
     P().rounds.push(r); S.round = r.id;
     saveProject("rounds", P().rounds, { now: true }); renderRounds(); renderTracksList();
   };
@@ -738,15 +739,15 @@ function renderRounds() {
   });
   if ($("#delRound")) $("#delRound").onclick = () => {
     const n = roundTracks().length;
-    if (n && !confirm(`В туре ${n} ${plural(n, "трек", "трека", "треков")}. Они перейдут в первый тур. Удалить тур?`)) return;
+    if (n && !confirm(`В раунде ${n} ${plural(n, "трек", "трека", "треков")}. Они перейдут в первый раунд. Удалить раунд?`)) return;
     P().rounds = P().rounds.filter(r => r.id !== cur.id);
     roundTracks().forEach(t => (t.round = P().rounds[0].id));
     saveProject("rounds", P().rounds, { now: true }); renderRounds(); renderTracksList();
   };
   const onEdit = () => {
     const r = curRound();  // не cur: опрос сервера заменяет P() новым объектом
-    r.title = $("#roundTitle").value; r.rules = $("#roundRules").value; r.narration = $("#roundNarration").value;
-    $(`#rounds [data-round="${r.id}"]`).textContent = r.title || "Тур";
+    r.title = $("#roundTitle").value; r.subtitle = $("#roundSubtitle").value; r.rules = $("#roundRules").value; r.narration = $("#roundNarration").value;
+    $(`#rounds [data-round="${r.id}"]`).textContent = r.title || "Раунд";
     saveProject("rounds", P().rounds);
   };
   $("#roundSeconds").addEventListener("input", e => {
@@ -771,11 +772,13 @@ function renderRounds() {
     showRoundPreview();
   });
   $("#roundTitle").addEventListener("input", onEdit);
+  $("#roundSubtitle").addEventListener("input", onEdit);
   $("#roundRules").addEventListener("input", onEdit);
   $("#roundNarration").addEventListener("input", onEdit);
   bindMusic("roundMusic", v => { curRound().music = v; saveProject("rounds", P().rounds); });
   $("#roundTitle").addEventListener("focus", showRoundPreview);
   $("#roundRules").addEventListener("focus", showRoundPreview);
+  $("#roundSubtitle").addEventListener("focus", showRoundPreview);
 }
 function showRoundPreview() {
   const t = roundTracks()[0];
@@ -816,7 +819,7 @@ function renderListBar() {
     <span class="summary">${on} ${plural(on, "трек", "трека", "треков")} в квизе${on !== tracks.length ? `, ${tracks.length - on} выключено` : ""}${busy ? `. Скачивается: ${busy}` : ""}</span>
     ${dl?.state === "running" ? `<button class="btn small" data-act="stop-dl">Остановить скачивание</button>` :
       pending ? `<button class="btn small" data-act="download">Скачать (${pending})</button>` : ""}
-    <button class="btn small ghost" data-act="covers" ${cv?.state === "running" ? "disabled" : ""}>${cv?.state === "running" ? "Ищу обложки…" : "Найти обложки"}</button>`;
+    <button class="btn small ghost" data-act="covers" ${cv?.state === "running" ? "disabled" : ""}>${cv?.state === "running" ? "Ищу обложки альбомов…" : "Найти обложки альбомов"}</button>`;
 }
 $("#main").addEventListener("click", e => {
   const b = e.target.closest("[data-act]"); if (!b) return;
@@ -842,21 +845,21 @@ function trackRow(t, i) {
       <button class="handle" title="Перетащите, чтобы поменять порядок">${String(i + 1).padStart(2, "0")}</button>
       <label class="switch" title="${t.enabled ? "В квизе — нажмите, чтобы выключить" : "Выключен — нажмите, чтобы вернуть"}"><input type="checkbox" data-f="enabled" ${t.enabled ? "checked" : ""} aria-label="Трек в квизе"><span></span></label>
     </div>
-    <button class="t-cover" title="Обложка для ответа. Нажмите или перетащите картинку, чтобы заменить">${c ? `<img src="${media(c.src)}" alt=""><span class="src">${esc(c.label)}</span>` : VINYL}</button>
+    <button class="t-cover" title="Обложка альбома для слайда ответа. Нажмите или перетащите картинку, чтобы заменить">${c ? `<img src="${media(c.src)}" alt=""><span class="src">${esc(c.label)}</span>` : VINYL}</button>
     <div class="t-fields">
-      ${ml(t, "title", "Название песни", "f-title")}
+      ${ml(t, "title", "Название трека", "f-title")}
       ${ml(t, "artist", "Исполнитель", "f-artist")}
       <div class="sub">
-        <input data-f="album" placeholder="Альбом" value="${esc(t.album)}" aria-label="Альбом">
+        ${ml(t, "album", "Альбом")}
         <input data-f="year" placeholder="Год" value="${esc(t.year)}" inputmode="numeric" aria-label="Год">
-        ${ml(t, "hint", "Подсказка на экране вопроса")}
+        ${ml(t, "hint", "Подсказка на слайде вопроса")}
       </div>
       <div class="qa">
         ${ml(t, "question", "Вопрос — как во вкладке «Тексты»")}
         ${ml(t, "answer", "Ответ — исполнитель")}
       </div>
-      <input data-f="answer_video" placeholder="Видео на ответе — ссылка (начало из ?t=)" value="${esc(t.answer_video || "")}" aria-label="Видео на ответе">
-      <input data-f="video_source" placeholder="Откуда фрагмент — строка на ответе" value="${esc(t.video_source || "")}" aria-label="Откуда видеофрагмент">
+      <input data-f="answer_video" placeholder="Видео ответа — ссылка (начало из ?t=)" value="${esc(t.answer_video || "")}" aria-label="Видео ответа">
+      <input data-f="video_source" placeholder="Источник видео — строка на слайде ответа" value="${esc(t.video_source || "")}" aria-label="Источник видео">
       ${t.url ? `<div class="url" title="${esc(t.url)}">${esc(t.url)}</div>` : ""}
     </div>
     <div class="t-side"><span class="status"></span><button class="icon more" aria-label="Действия с треком">⋯</button></div>
@@ -867,7 +870,7 @@ function trackRow(t, i) {
         <button class="nudge" data-d="-0.5" aria-label="На полсекунды раньше">−</button>
         <input data-f="start" value="${fmtTime(t.start)}" aria-label="Начало отрывка">
         <button class="nudge" data-d="0.5" aria-label="На полсекунды позже">+</button>
-        <input data-f="start2" value="${t.start2 != null ? fmtTime(t.start2) : ""}" placeholder="2-й фрагмент" title="Начало второго фрагмента. Пусто — один фрагмент" aria-label="Начало второго фрагмента" style="width:96px">
+        <input data-f="start2" value="${t.start2 != null ? fmtTime(t.start2) : ""}" placeholder="2-й отрывок" title="Начало второго отрывка. Пусто — один отрывок" aria-label="Начало второго отрывка" style="width:96px">
       </div>
       <button class="btn small mark" title="Начать отрывок с того места, которое сейчас звучит">Отметить</button>
     </div>
@@ -877,7 +880,7 @@ function renderTracksList() {
   const list = $("#trackList"); if (!list) return;
   const tracks = roundTracks();
   list.innerHTML = tracks.length ? tracks.map(trackRow).join("") :
-    `<div class="empty"><strong>В этом туре пока нет треков</strong>Вставьте ссылки в поле выше — для пробы хватит двух-трёх.</div>`;
+    `<div class="empty"><strong>В этом раунде пока нет треков</strong>Вставьте ссылки в поле выше — для пробы хватит двух-трёх.</div>`;
   renderListBar();
   tracks.forEach(t => { updateStatus(t.id); loadWave(t.id); });
 }
@@ -959,15 +962,15 @@ document.addEventListener("click", e => {
     ["Показать в предпросмотре", () => setPreviewTrack(id, "question")],
     ["Слушать трек с начала", () => playFrom(id, 0, null)],
     null,
-    t.cover && ["Убрать свою обложку", () => { saveTrack(id, "cover", "", { now: true }); setTimeout(refreshTrackRows, 300); }],
-    ["Выбрать свою обложку…", () => pickFile("image/*", ([f]) => uploadCover(id, f))],
-    ["Искать обложку заново", () => startJob("covers", { ids: [id], forget: true })],
+    t.cover && ["Убрать свою обложку альбома", () => { saveTrack(id, "cover", "", { now: true }); setTimeout(refreshTrackRows, 300); }],
+    ["Выбрать свою обложку альбома…", () => pickFile("image/*", ([f]) => uploadCover(id, f))],
+    ["Искать обложку альбома заново", () => startJob("covers", { ids: [id], forget: true })],
     null,
     t.url && ["Заменить ссылку…", () => replaceUrl(id)],
     S.d.status[id]?.state === "error" && ["Повторить скачивание", () => startJob("download", { ids: [id] })],
     ["Переместить вверх", () => moveTrack(id, -1)],
     ["Переместить вниз", () => moveTrack(id, 1)],
-    ...P().rounds.filter(r => r.id !== t.round).map(r => [`Перенести в «${r.title || "тур"}»`, () => {
+    ...P().rounds.filter(r => r.id !== t.round).map(r => [`Перенести в «${r.title || "раунд"}»`, () => {
       t.round = r.id; saveTrack(id, "round", r.id, { now: true }); renderTracksList();
     }]),
     null,
@@ -1222,15 +1225,15 @@ function pickFile(accept, cb, multiple = false) {
 /* ───────────── тексты ───────────── */
 const TEXT_GROUPS = [
   ["Заставка квиза", "intro", [["intro_title", "Заголовок"], ["intro_subtitle", "Приветствие, вступление", true],
-    ["intro_narration", "Текст для диктора", true, "Пусто — диктор читает заголовок и приветствие"]], "Пустой заголовок — заставки не будет. Название и правила каждого тура — во вкладке «Треки»."],
-  ["Список туров", "rounds", [["rounds_narration", "Текст для диктора", true, "Пусто — диктор читает список туров"]],
-    "Идёт после заставки: номера и названия туров из вкладки «Треки». Музыка — как у заставки. Длительность 0 во вкладке «Оформление» — слайда не будет."],
-  ["Вопрос", "question", [["round_label", "Тур слева сверху"], ["question_label", "Плашка справа сверху"], ["prompt", "Надпись под кольцом"]], "Под «Туром» — название тура, на вопросах и ответах. Пустой «Тур» — только название. Подсказка для конкретного трека задаётся во вкладке «Треки»."],
-  ["Перед ответами тура", "answers", [["answers_title", "Заголовок"], ["answers_subtitle", "Подзаголовок"],
-    ["answers_narration", "Текст для диктора", true, "Пусто — без озвучки. Можно {round}"]], "Показывается в конце каждого тура, {round} — его название. Пустой заголовок — экрана не будет, ответы пойдут сразу."],
+    ["intro_narration", "Текст для диктора", true, "Пусто — диктор читает заголовок и приветствие"]], "Пустой заголовок — слайда заставки квиза не будет. Название и правила каждого раунда — во вкладке «Треки»."],
+  ["Список раундов", "rounds", [["rounds_narration", "Текст для диктора", true, "Пусто — диктор читает список раундов"]],
+    "Идёт после заставки квиза: названия раундов из вкладки «Треки». Музыка — как у заставки квиза. Длительность 0 во вкладке «Оформление» — слайда не будет."],
+  ["Вопрос", "question", [["round_label", "Раунд слева сверху"], ["question_label", "Плашка справа сверху"], ["prompt", "Надпись под кольцом"]], "Под «Раундом» — название раунда, на слайдах вопросов и ответов. Пустой «Раунд» — только название. Подсказка для конкретного трека задаётся во вкладке «Треки»."],
+  ["Заставка блока ответов", "answers", [["answers_title", "Заголовок"], ["answers_subtitle", "Подзаголовок"],
+    ["answers_narration", "Текст для диктора", true, "Пусто — без озвучки. Можно {round}"]], "Открывает блок ответов в конце каждого раунда, {round} — его название. Пустой заголовок — слайда не будет, ответы пойдут сразу."],
   ["Ответ", "answer", [["answer_label", "Плашка справа сверху"]], "Название, исполнитель, альбом и год берутся из треков."],
   ["Финал", "outro", [["outro_title", "Заголовок"], ["outro_subtitle", "Подзаголовок"],
-    ["outro_narration", "Текст для диктора", true, "Пусто — без озвучки. Например, куда писать и где подписаться"]], "Пустой заголовок — финального экрана не будет."],
+    ["outro_narration", "Текст для диктора", true, "Пусто — без озвучки. Например, куда писать и где подписаться"]], "Пустой заголовок — слайда финала не будет."],
 ];
 // фоновая музыка: ссылка на YouTube (начало из ?t=) или загруженный файл
 const musicField = (id, value) => `<span class="row"><input id="${id}" style="flex:1" value="${esc(value || "")}" placeholder="Ссылка на YouTube или файл — пусто: без музыки">
@@ -1245,7 +1248,7 @@ function bindMusic(id, save) {
 function renderTexts() {
   const ph = Object.entries(S.boot.placeholders).map(([k, v]) => `<code>${esc(k)}</code> — ${esc(v)}`).join(", ");
   $("#main").innerHTML = `<div class="section"><h2>Тексты</h2>
-    <p class="lead">Подстановки: ${ph}. Пока вы печатаете, справа показывается этот экран.</p></div>` +
+    <p class="lead">Подстановки: ${ph}. Пока вы печатаете, справа показывается этот слайд.</p></div>` +
     TEXT_GROUPS.map(([title, screen, fields, note]) => `<div class="section"><h3>${title}</h3><div class="grid-2">
       ${fields.map(([k, lbl, long, ph]) => `<label class="field"${long ? ` style="grid-column:1/-1"` : ""}><span>${lbl}</span>${long ?
         `<textarea rows="4" data-text="${k}" data-screen="${screen}" placeholder="${esc(ph ?? S.boot.defaults.texts[k])}">${esc(P().texts[k])}</textarea>` :
@@ -1253,7 +1256,7 @@ function renderTexts() {
       </div><p class="hint">${note}</p></div>`).join("") + `<div class="section"><h3>Фоновая музыка</h3><div class="grid-2">
       <label class="field"><span>Под заставкой квиза</span>${musicField("introMusic", P().intro_music)}</label>
       <label class="field"><span>Под финалом</span>${musicField("outroMusic", P().outro_music)}</label>
-      </div><p class="hint">Музыка тура (под его правилами и «Ответами») задаётся во вкладке «Треки». Громкость — в «Оформлении».</p></div>`;
+      </div><p class="hint">Музыка раунда (под слайдами его заставки и блока ответов) задаётся во вкладке «Треки». Громкость — в «Оформлении».</p></div>`;
   bindMusic("introMusic", v => saveProject("intro_music", v));
   bindMusic("outroMusic", v => saveProject("outro_music", v));
   $$("[data-text]").forEach(inp => {
@@ -1303,40 +1306,40 @@ function renderLook() {
     </div>
     <div class="section"><h3>Длительность, секунды</h3>
       <div class="timing">
-        ${[["question", "Вопрос (отрывок)"], ["answer", "Ответ"], ["gap", "Пауза перед вопросом"], ["answer_gap", "Пауза после ответа"], ["intro", "Заставка квиза"], ["rounds", "Список туров"], ["round", "Заставка тура"], ["answers_card", "Экран «Ответы»"], ["outro", "Финал"]].map(([k, l]) =>
+        ${[["question", "Вопрос (отрывок)"], ["answer", "Ответ"], ["gap", "Пауза перед вопросом"], ["answer_gap", "Пауза после ответа"], ["cover", "Обложка для соцсетей"], ["intro", "Заставка квиза"], ["rounds", "Список раундов"], ["round", "Заставка раунда"], ["answers_card", "Заставка блока ответов"], ["outro", "Финал"]].map(([k, l]) =>
           `<label class="field"><span>${l}</span><span class="unit"><input type="number" min="0" step="0.5" data-timing="${k}" value="${tm[k]}"></span></label>`).join("")}
       </div>
       <div class="row" style="margin-top:14px"><span class="hint" style="margin-right:6px">Звук на ответе:</span>
         <div class="seg" data-seg="answer_audio">
           <button data-v="replay" aria-pressed="${p.answer_audio === "replay"}">тот же отрывок</button>
-          <button data-v="continue" aria-pressed="${p.answer_audio === "continue"}">продолжение песни</button>
+          <button data-v="continue" aria-pressed="${p.answer_audio === "continue"}">продолжение трека</button>
           <button data-v="none" aria-pressed="${p.answer_audio === "none"}">тишина</button>
         </div></div>
     </div>
     <div class="section"><h3>Шрифты</h3>
-      <p class="hint" style="margin-top:-6px">Заголовки — названия экранов, название песни и цифры таймера. Текст — плашки, подзаголовки, исполнитель, альбом.</p>
+      <p class="hint" style="margin-top:-6px">Заголовки — заголовки слайдов, название трека и цифры таймера. Текст — плашки, подзаголовки, исполнитель, альбом.</p>
       ${fontRow("heading", "Заголовки")}${fontRow("text", "Текст")}
     </div>
     <div class="section"><h3>Цвета</h3>
       <div class="colors">${COLOR_LABELS.map(([k, l]) => `<div class="color"><input type="color" data-color="${k}" value="${esc(st[k])}" aria-label="${l}"><span>${l}</span><input class="hex" data-hex="${k}" value="${esc(st[k])}" aria-label="${l}, код цвета"></div>`).join("")}</div>
-      <p class="hint">Цвета кольца визуализатора — во вкладке «Визуализатор».</p>
+      <p class="hint">Цвета кольца — во вкладке «Визуализатор».</p>
     </div>
-    <div class="section"><h3>Фон и обложки</h3>
+    <div class="section"><h3>Фон и обложки альбомов</h3>
       <div class="grid-2">
         <label class="field"><span>Картинка фона вместо градиента (будет затемнена)</span>
           <span class="row"><select id="bgPick" style="flex:1"><option value="">Без картинки — градиент</option>
             ${lib.image.map(f => `<option value="${esc(f)}" ${f === st.background ? "selected" : ""}>${esc(f.split("/").pop())}</option>`).join("")}</select>
             <button class="btn small" id="bgUpload">Загрузить…</button></span></label>
-        <label class="field"><span>Громкость фоновой музыки под голосом (сама музыка — в «Текстах» и у каждого тура): <b id="musicVolVal">${Math.round(p.music_volume * 100)}%</b></span>
+        <label class="field"><span>Громкость фоновой музыки под голосом (сама музыка — в «Текстах» и у каждого раунда): <b id="musicVolVal">${Math.round(p.music_volume * 100)}%</b></span>
           <input type="range" id="musicVol" min="0" max="1" step="0.05" value="${p.music_volume}"></label>
-        <label class="field"><span>Голос для заставок квиза и туров (читает заголовок и текст)</span>
+        <label class="field"><span>Голос для заставок квиза и раундов (читает заголовок и текст)</span>
           <select id="voice"><option value="">Без озвучки</option>${Object.entries(S.boot.voices).map(([k, n]) => `<option value="${k}" ${k === p.voice ? "selected" : ""}>${n}</option>`).join("")}</select></label>
-        <label class="field"><span>Страна магазина iTunes для поиска обложек</span>
+        <label class="field"><span>Страна магазина iTunes для поиска обложек альбомов</span>
           <select id="itunes">${["US", "RU", "KZ", "UA", "BY", "GB", "DE", "FR", "JP"].map(c => `<option ${c === p.covers.itunes_country ? "selected" : ""}>${c}</option>`).join("")}</select></label>
       </div>
       <div style="margin-top:14px;display:grid;gap:10px">
-        <label class="check"><span class="switch"><input type="checkbox" id="backdrop" ${st.cover_backdrop ? "checked" : ""}><span></span></span>Фон экрана ответа — размытая обложка</label>
-        <label class="check"><span class="switch"><input type="checkbox" id="online" ${p.covers.online ? "checked" : ""}><span></span></span>Искать обложки в интернете (Deezer, iTunes)</label>
+        <label class="check"><span class="switch"><input type="checkbox" id="backdrop" ${st.cover_backdrop ? "checked" : ""}><span></span></span>Фон слайда ответа — размытая обложка альбома</label>
+        <label class="check"><span class="switch"><input type="checkbox" id="online" ${p.covers.online ? "checked" : ""}><span></span></span>Искать обложки альбомов в интернете (Deezer, iTunes)</label>
       </div>
     </div>`;
 
@@ -1406,7 +1409,7 @@ function renderLook() {
 function renderViz() {
   const v = P().visualizer;
   $("#main").innerHTML = `<div class="section"><h2>Визуализатор</h2>
-    <p class="lead">Кольцо на экране вопроса: столбики показывают настоящий спектр отрывка. Точкой отмечено то, что вы поменяли; ↺ возвращает значение по умолчанию.</p></div>` +
+    <p class="lead">Кольцо на слайде вопроса: столбики показывают настоящий спектр отрывка. Точкой отмечено то, что вы поменяли; ↺ возвращает значение по умолчанию.</p></div>` +
     S.boot.viz.map(g => `<div class="viz-group"><h3>${esc(g.title)}</h3>${g.note ? `<p class="hint note">${esc(g.note)}</p>` : ""}
       ${g.fields.map(f => vizField(f, v)).join("")}</div>`).join("");
   showPreview(S.pv.name === "reveal" ? "reveal" : "question");
@@ -1479,7 +1482,7 @@ function renderBuild() {
   $("#main").innerHTML = `
     <div class="section"><h2>Сборка</h2><p class="lead">Сначала соберите пробный ролик из двух песен — это быстро. Если всё нравится, собирайте весь квиз.</p>
       <div class="build-head">
-        <div class="stat"><b>${on}</b><span>${plural(on, "песня", "песни", "песен")}</span></div>
+        <div class="stat"><b>${on}</b><span>${plural(on, "трек", "трека", "треков")}</span></div>
         <div class="stat"><b>${fmtTime(total).replace(/\.\d$/, "")}</b><span>длина ролика</span></div>
         <div class="stat"><b>${p.format === "vertical" ? "9:16" : "16:9"}</b><span>${p.format === "vertical" ? "1080×1920" : "1920×1080"}</span></div>
       </div>
@@ -1489,10 +1492,10 @@ function renderBuild() {
       <div class="row">
         <span class="row" style="gap:6px">
           <button class="btn" id="buildTest" ${running || blocking.length || !on ? "disabled" : ""}>Пробный ролик</button>
-          <select id="testRound" aria-label="Из какого тура"><option value="">из всех туров</option>
-            ${p.rounds.map((r, i) => `<option value="${r.id}" ${r.id === store.get("testRound", "") ? "selected" : ""}>из тура «${esc(r.title || `Тур ${i + 1}`)}»</option>`).join("")}</select>
+          <select id="testRound" aria-label="Из какого раунда"><option value="">из всех раундов</option>
+            ${p.rounds.map((r, i) => `<option value="${r.id}" ${r.id === store.get("testRound", "") ? "selected" : ""}>из раунда «${esc(r.title || `Раунд ${i + 1}`)}»</option>`).join("")}</select>
           <span class="hint">первые</span>
-          <input type="number" id="limit" value="${store.get("limit", 2)}" min="1" max="${Math.max(1, on)}" style="width:58px" aria-label="Сколько песен в пробном ролике">
+          <input type="number" id="limit" value="${store.get("limit", 2)}" min="1" max="${Math.max(1, on)}" style="width:58px" aria-label="Сколько треков в пробном ролике">
         </span>
         <button class="btn primary" id="buildAll" ${running || blocking.length || !on ? "disabled" : ""}>Собрать видео</button>
         ${running ? `<button class="btn danger" id="buildStop">Остановить</button>` : ""}
@@ -1503,7 +1506,7 @@ function renderBuild() {
       <video controls preload="metadata" class="${p.format === "vertical" ? "vertical" : ""}" src="${media(latest.video)}?v=${Math.round(latest.time)}"></video>
       <div class="row" style="margin-top:10px">
         <a class="btn" href="${media(latest.video)}?download=1">Скачать видео</a>
-        ${latest.thumbnail ? `<a class="btn" href="${media(latest.thumbnail)}?download=1">Скачать обложку ролика</a>` : ""}
+        ${latest.thumbnail ? `<a class="btn" href="${media(latest.thumbnail)}?download=1">Скачать значок YouTube</a>` : ""}
         <span class="hint">Файлы лежат в папке ${esc(S.boot.root)}/${esc(latest.video.split("/").slice(0, -1).join("/"))}</span>
       </div>
       ${latest.description_text ? `<label class="field" style="margin-top:16px"><span>Описание для YouTube — с главами и ответами</span>
@@ -1511,8 +1514,8 @@ function renderBuild() {
         <button class="btn small" id="copyDesc" style="margin-top:8px">Скопировать описание</button>` : ""}
     </div>` : ""}
     ${S.d.outputs.length > 1 ? `<div class="section"><h3>Предыдущие сборки</h3><ul class="outputs">${S.d.outputs.slice(1).map(o => `<li><span class="name">${esc(o.video.split("/").pop())}</span><span class="hint">${new Date(o.time * 1000).toLocaleString("ru")}</span><a class="btn small" href="${media(o.video)}?download=1">Скачать</a></li>`).join("")}</ul></div>` : ""}
-    <div class="section"><h3>Проверить обложки</h3>
-      <p class="hint" style="margin-top:-6px">Все экраны ответов на одном листе: сразу видно, где обложка не та.</p>
+    <div class="section"><h3>Проверить обложки альбомов</h3>
+      <p class="hint" style="margin-top:-6px">Все слайды ответов на одном листе: сразу видно, где обложка альбома не та.</p>
       <button class="btn small" id="sheetBtn" ${sheet?.state === "running" ? "disabled" : ""}>${sheet?.state === "running" ? "Рисую…" : "Показать все ответы"}</button>
       ${sheet?.state === "done" ? `<img src="${media(sheet.result.image)}?v=${sheet.result.version}" alt="Все ответы" style="width:100%;margin-top:12px;border-radius:10px;border:1px solid var(--line)">` : ""}
     </div>`;
@@ -1557,7 +1560,7 @@ function updateBuildProgress() {
 }
 
 /* ───────────── предпросмотр ───────────── */
-const PV = [["intro", "Заставка"], ["rounds", "Туры"], ["round", "Тур"], ["reveal", "Появление"], ["question", "Вопрос"], ["answers", "«Ответы»"], ["answer", "Ответ"], ["outro", "Финал"]];
+const PV = [["intro", "Заставка"], ["rounds", "Раунды"], ["round", "Раунд"], ["reveal", "Появление"], ["question", "Вопрос"], ["answers", "«Ответы»"], ["answer", "Ответ"], ["outro", "Финал"]];
 function renderPreviewPanel() {
   const im = S.pv.images, v = S.pv.version;
   $("#pvThumbs").classList.toggle("vertical", P().format === "vertical");
