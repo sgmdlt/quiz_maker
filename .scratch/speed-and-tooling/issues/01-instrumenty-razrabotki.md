@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [x] `uv run ruff check` проходит без замечаний; найденное исправлено (правила по умолчанию, без лишней настройки)
 - [x] `uv run pytest -q -n auto` проходит, все тесты зелёные
