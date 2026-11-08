@@ -1743,11 +1743,7 @@ class FfmpegEncoder:
         self.writer = VideoWriter(self.proc, cancel, on_frame)
 
     def segment(self, frames, n):
-        try:
-            self.writer.segment(frames, n)
-        except BaseException:
-            self.abort()
-            raise
+        self.writer.segment(frames, n)
 
     def close(self):
         try:
@@ -1763,6 +1759,7 @@ class FfmpegEncoder:
             self.tmp.cleanup()
 
     def abort(self):
+        """Остановить ffmpeg и убрать недописанный файл (ошибка или отмена сборки)."""
         self.proc.kill()
         self.proc.wait()
         self.partial.unlink(missing_ok=True)
@@ -1899,8 +1896,12 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
             progress(0.05 + 0.93 * frac, stage)
 
     sink = media.encoder(out, renderer.W, renderer.H, chunks, cancel, on_frame)
-    for slide, chunk in zip(slides, chunks):
-        sink.segment(render_slide(renderer, slide, chunk, social_cover, videos), slide.frames)
+    try:
+        for slide, chunk in zip(slides, chunks):
+            sink.segment(render_slide(renderer, slide, chunk, social_cover, videos), slide.frames)
+    except BaseException:  # отрисовка, отмена или ffmpeg — недописанного ролика не остаётся
+        sink.abort()
+        raise
     sink.close()
 
     # 6. Значок YouTube и текст описания с таймкодами
