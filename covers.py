@@ -34,7 +34,7 @@ TIMEOUT = 12
 MIN_GOOD_SIZE = 400
 COMPILATION = re.compile(
     r"greatest hits|best of|the best|collection|anthology|essentials|hits\b|"
-    r"сборник|лучшее|лучшие песни|хиты", re.I)
+    r"сборник|лучшее|лучшие песни|хиты", re.IGNORECASE)
 
 
 # ───────────────────────── сравнение названий ─────────────────────────
@@ -107,7 +107,7 @@ def search_deezer(artist, title):
     if best and best.get("album_id"):
         try:
             best["year"] = (_get_json(f"https://api.deezer.com/album/{best['album_id']}").get("release_date") or "")[:4]
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
     return best
 
@@ -141,7 +141,7 @@ def download_image(urls, dest):
             continue
         try:
             img = Image.open(io.BytesIO(_get(url))).convert("RGB")
-        except Exception:
+        except Exception:  # noqa: BLE001, S112
             continue
         dest.parent.mkdir(parents=True, exist_ok=True)
         img.save(dest, quality=93)
@@ -156,7 +156,7 @@ def extract_embedded(audio, dest):
     dest.parent.mkdir(parents=True, exist_ok=True)
     if not dest.exists():
         r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(audio), "-an", "-map", "0:v:0?",
-                            "-frames:v", "1", str(dest)], capture_output=True)
+                            "-frames:v", "1", str(dest)], check=False, capture_output=True)
         if r.returncode != 0:
             dest.unlink(missing_ok=True)
     if not dest.exists() or dest.stat().st_size == 0:
@@ -165,7 +165,7 @@ def extract_embedded(audio, dest):
     try:
         with Image.open(dest) as im:
             return min(im.size)
-    except Exception:
+    except Exception:  # noqa: BLE001
         return 0
 
 
@@ -184,7 +184,7 @@ def trim_borders(src, dest, threshold=24):
 
 def read_tags(audio):
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags:stream_tags",
-                        "-of", "json", str(audio)], capture_output=True, text=True)
+                        "-of", "json", str(audio)], check=False, capture_output=True, text=True)
     try:
         data = json.loads(r.stdout or "{}")
     except json.JSONDecodeError:
@@ -245,7 +245,7 @@ class CoverFinder:
                     self.online = False
                     self.offline_reason = str(e.reason)
                 return None
-            except Exception:
+            except Exception:  # noqa: BLE001, S112
                 continue
             if found:
                 return found
@@ -313,7 +313,7 @@ class CoverFinder:
                     trim_borders(thumb, trimmed)
                 info.update(file=trimmed, source="миниатюра YouTube")
                 return info
-            except Exception:
+            except Exception:  # noqa: BLE001, S110
                 pass
 
         if emb_size:
