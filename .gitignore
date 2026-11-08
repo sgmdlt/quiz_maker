@@ -5,3 +5,4 @@ projects/*/output/
 *.part.mp4
 __MACOSX/
 martian-grotesk-*/
+.claude/worktrees/

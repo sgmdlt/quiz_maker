@@ -1,5 +1,4 @@
 import itertools
-import json
 import subprocess
 
 import quiz_core as qc
