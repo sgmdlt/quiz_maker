@@ -3,6 +3,7 @@
 [tools]
 uv = "0.10.4"
 hk = "2.10.0"
+typos = "1.51.1"
 
 [env]
 # инструменты из uv.lock (ruff, pytest…) видны hk и задачам

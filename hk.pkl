@@ -7,6 +7,7 @@ steps {
   // ruff стоит в окружении uv (pyproject.toml); .venv/bin в PATH кладёт mise.toml
   ["ruff"] = Builtins.ruff
   ["ruff_format"] = Builtins.ruff_format
+  ["typos"] = Builtins.typos  // исключения — в _typos.toml
 }
 
 hooks {
