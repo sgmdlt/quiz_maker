@@ -33,6 +33,7 @@ def test_round_card_subtitle_three_lines(tmp_path):
 
 def test_round_card_logo_lowered(tmp_path):
     from PIL import Image
+
     logo = tmp_path / "logo.png"
     Image.new("RGBA", (300, 150), (255, 0, 0, 255)).save(logo)
     r = qc.Renderer(960, 540, qc.DEFAULT_PROJECT["style"], qc.Fonts(qc.Workspace(tmp_path), {}), logo=logo)
@@ -43,6 +44,7 @@ def test_round_card_logo_lowered(tmp_path):
 
 def test_three_tries_answer_covers_bigger(tmp_path):
     from PIL import Image
+
     Image.new("RGB", (400, 400), (255, 0, 0)).save(tmp_path / "c.png")
     r = _renderer(tmp_path)
     rows = [{"title": "Песня", "artist": "Исп", "album": "Альбом", "year": 2000, "cover_file": tmp_path / "c.png"}] * 3

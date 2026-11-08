@@ -55,8 +55,8 @@ from spectrum_ring import RingConfig, SpectrumRing, analyze, config_from_dict
 
 ROOT = Path(os.environ.get("QUIZ_HOME") or Path(__file__).resolve().parent)
 
-FADE_FRAMES = 8                          # плавный переход между экранами (~0.27 с)
-LOUDNESS = -14                           # целевая громкость, LUFS (как у YouTube)
+FADE_FRAMES = 8  # плавный переход между экранами (~0.27 с)
+LOUDNESS = -14  # целевая громкость, LUFS (как у YouTube)
 RENDER_THREADS = max(1, (os.cpu_count() or 2) // 2)  # потоки для кольца; остальное ядрам x264
 
 
@@ -74,14 +74,25 @@ class Cancelled(QuizError):
 DEFAULT_PROJECT = {
     "version": 1,
     "name": "Новый квиз",
-    "format": "horizontal",           # horizontal (1920x1080) | vertical (1080x1920, Shorts)
-    "timing": {"question": 10, "answer": 6, "gap": 2, "answer_gap": 1, "cover": 3, "intro": 3, "rounds": 4, "round": 6, "answers_card": 3, "outro": 4},
-    "voice": "ru-RU-DmitryNeural",    # голос для заставок квиза и туров (VOICES), "" — без озвучки
+    "format": "horizontal",  # horizontal (1920x1080) | vertical (1080x1920, Shorts)
+    "timing": {
+        "question": 10,
+        "answer": 6,
+        "gap": 2,
+        "answer_gap": 1,
+        "cover": 3,
+        "intro": 3,
+        "rounds": 4,
+        "round": 6,
+        "answers_card": 3,
+        "outro": 4,
+    },
+    "voice": "ru-RU-DmitryNeural",  # голос для заставок квиза и туров (VOICES), "" — без озвучки
     # фоновая музыка: путь к файлу или ссылка (YouTube, начало из ?t=); у тура своя — round["music"]
     "intro_music": "",
     "outro_music": "",
-    "music_volume": 0.3,              # громкость музыки относительно голоса, 0..1
-    "answer_audio": "replay",         # replay — тот же отрывок | continue — продолжение | none — тишина
+    "music_volume": 0.3,  # громкость музыки относительно голоса, 0..1
+    "answer_audio": "replay",  # replay — тот же отрывок | continue — продолжение | none — тишина
     "shuffle": False,
     "texts": {
         "intro_title": "Угадай песню",
@@ -100,7 +111,7 @@ DEFAULT_PROJECT = {
         "answers_narration": "",
         "outro_narration": "",
     },
-    "fonts": {"heading": "", "text": ""},   # путь к шрифту, для вариативного — «путь#Bold»
+    "fonts": {"heading": "", "text": ""},  # путь к шрифту, для вариативного — «путь#Bold»
     "style": {
         "bg_top": "#1B1035",
         "bg_bottom": "#4A1B5C",
@@ -108,59 +119,108 @@ DEFAULT_PROJECT = {
         "text": "#FFFFFF",
         "muted": "#CFC6E8",
         "accent": "#FFC83D",
-        "answer_text": "#FFFFFF",     # слайд ответа: фон — обложка, поэтому цвета свои
+        "answer_text": "#FFFFFF",  # слайд ответа: фон — обложка, поэтому цвета свои
         "answer_muted": "#CFC6E8",
-        "background": "",             # картинка для фона вместо градиента
-        "logo": "",                   # PNG логотипа на заставках (из cover.py), пусто — солнце из столбиков
-        "cover_backdrop": True,       # фон экрана ответа — размытая обложка
+        "background": "",  # картинка для фона вместо градиента
+        "logo": "",  # PNG логотипа на заставках (из cover.py), пусто — солнце из столбиков
+        "cover_backdrop": True,  # фон экрана ответа — размытая обложка
     },
-    "visualizer": {},                 # только изменённые параметры RingConfig
+    "visualizer": {},  # только изменённые параметры RingConfig
     "covers": {"online": True, "itunes_country": "US"},
-    "rounds": [],                     # [{id, title, rules}], у трека — id своего тура
+    "rounds": [],  # [{id, title, rules}], у трека — id своего тура
     "tracks": [],
 }
 
 DEFAULT_TRACK = {
     "id": "",
-    "round": "",            # id тура
+    "round": "",  # id тура
     "enabled": True,
-    "url": "",              # ссылка (YouTube или прямая на файл)
-    "file": "",             # аудиофайл, когда скачан или загружен
-    "thumb": "",            # миниатюра видео
+    "url": "",  # ссылка (YouTube или прямая на файл)
+    "file": "",  # аудиофайл, когда скачан или загружен
+    "thumb": "",  # миниатюра видео
     "duration": None,
     "start": 0.0,
-    "start2": None,         # начало второго фрагмента: вопрос делится на два по половине времени
+    "start2": None,  # начало второго фрагмента: вопрос делится на два по половине времени
     "title": "",
     "artist": "",
     "album": "",
     "year": "",
     "hint": "",
-    "question": "",         # свой вопрос, иначе texts.prompt
-    "answer": "",           # свой ответ, иначе исполнитель
-    "cover": "",            # своя обложка
-    "video_source": "",     # откуда видеофрагмент — строка под альбомом на ответе
-    "answer_video": "",     # ссылка на видео для ответа (начало из ?t=): ответ идёт на его фоне и с его звуком
-    "cover_auto": "",       # найденная автоматически
+    "question": "",  # свой вопрос, иначе texts.prompt
+    "answer": "",  # свой ответ, иначе исполнитель
+    "cover": "",  # своя обложка
+    "video_source": "",  # откуда видеофрагмент — строка под альбомом на ответе
+    "answer_video": "",  # ссылка на видео для ответа (начало из ?t=): ответ идёт на его фоне и с его звуком
+    "cover_auto": "",  # найденная автоматически
     "cover_source": "",
     "error": "",
 }
 
-PATCHABLE = {"name", "format", "timing", "answer_audio", "shuffle", "texts", "fonts", "style", "visualizer", "covers",
-             "rounds", "voice", "intro_music", "outro_music", "music_volume"}
-VOICES = {"ru-RU-DmitryNeural": "Дмитрий", "ru-RU-SvetlanaNeural": "Светлана",  # edge-tts, нужен интернет
-          "ru_RU-dmitri-medium": "Дмитрий (Piper, без интернета)", "ru_RU-irina-medium": "Ирина (Piper, без интернета)",
-          "ru_RU-denis-medium": "Денис (Piper, без интернета)", "ru_RU-ruslan-medium": "Руслан (Piper, без интернета)"}
+PATCHABLE = {
+    "name",
+    "format",
+    "timing",
+    "answer_audio",
+    "shuffle",
+    "texts",
+    "fonts",
+    "style",
+    "visualizer",
+    "covers",
+    "rounds",
+    "voice",
+    "intro_music",
+    "outro_music",
+    "music_volume",
+}
+VOICES = {
+    "ru-RU-DmitryNeural": "Дмитрий",
+    "ru-RU-SvetlanaNeural": "Светлана",  # edge-tts, нужен интернет
+    "ru_RU-dmitri-medium": "Дмитрий (Piper, без интернета)",
+    "ru_RU-irina-medium": "Ирина (Piper, без интернета)",
+    "ru_RU-denis-medium": "Денис (Piper, без интернета)",
+    "ru_RU-ruslan-medium": "Руслан (Piper, без интернета)",
+}
 # общая тема всех квизов (library/theme.json): в project.json эти поля не хранятся
 THEME_KEYS = {"style", "fonts", "visualizer", "timing"}
-THEME_TEXTS = {"round_label", "question_label", "prompt", "answers_title", "answers_subtitle", "answer_label",
-               "outro_title", "outro_subtitle", "answers_narration", "outro_narration"}
-TRACK_EDITABLE = {"round","enabled", "url", "start", "start2", "title", "artist", "album", "year", "hint", "question", "answer", "cover",
-                  "answer_video", "video_source"}
+THEME_TEXTS = {
+    "round_label",
+    "question_label",
+    "prompt",
+    "answers_title",
+    "answers_subtitle",
+    "answer_label",
+    "outro_title",
+    "outro_subtitle",
+    "answers_narration",
+    "outro_narration",
+}
+TRACK_EDITABLE = {
+    "round",
+    "enabled",
+    "url",
+    "start",
+    "start2",
+    "title",
+    "artist",
+    "album",
+    "year",
+    "hint",
+    "question",
+    "answer",
+    "cover",
+    "answer_video",
+    "video_source",
+}
 
 TEXT_PLACEHOLDERS = {
-    "{n}": "номер вопроса", "{total}": "всего вопросов",
-    "{songs}": "«20 песен»", "{seconds}": "«10 секунд»", "{count}": "число треков",
-    "{round}": "название раунда", "{round_n}": "номер раунда",
+    "{n}": "номер вопроса",
+    "{total}": "всего вопросов",
+    "{songs}": "«20 песен»",
+    "{seconds}": "«10 секунд»",
+    "{count}": "число треков",
+    "{round}": "название раунда",
+    "{round_n}": "номер раунда",
 }
 
 
@@ -244,6 +304,7 @@ def group_rounds(project, rows):
 
 # ───────────────────────── мелочи ─────────────────────────
 
+
 def parse_time(value):
     s = str(value if value is not None else "").strip().replace(",", ".")
     if not s:
@@ -262,9 +323,46 @@ def fmt_ts(seconds):
     return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
 
-TRANSLIT = dict(zip("абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
-                    ["a", "b", "v", "g", "d", "e", "e", "zh", "z", "i", "i", "k", "l", "m", "n", "o", "p", "r",
-                     "s", "t", "u", "f", "kh", "ts", "ch", "sh", "sch", "", "y", "", "e", "yu", "ya"]))
+TRANSLIT = dict(
+    zip(
+        "абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+        [
+            "a",
+            "b",
+            "v",
+            "g",
+            "d",
+            "e",
+            "e",
+            "zh",
+            "z",
+            "i",
+            "i",
+            "k",
+            "l",
+            "m",
+            "n",
+            "o",
+            "p",
+            "r",
+            "s",
+            "t",
+            "u",
+            "f",
+            "kh",
+            "ts",
+            "ch",
+            "sh",
+            "sch",
+            "",
+            "y",
+            "",
+            "e",
+            "yu",
+            "ya",
+        ],
+    )
+)
 
 
 def slugify(name):
@@ -281,6 +379,7 @@ def safe_filename(name):
 
 
 # ───────────────────────── рабочая папка и проекты ─────────────────────────
+
 
 class Workspace:
     def __init__(self, root=ROOT):
@@ -357,8 +456,14 @@ class Workspace:
                     data = json.loads(f.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError):
                     continue
-                out.append({"slug": d.name, "name": data.get("name") or d.name,
-                            "tracks": len(data.get("tracks") or []), "updated": f.stat().st_mtime})
+                out.append(
+                    {
+                        "slug": d.name,
+                        "name": data.get("name") or d.name,
+                        "tracks": len(data.get("tracks") or []),
+                        "updated": f.stat().st_mtime,
+                    }
+                )
         return sorted(out, key=lambda p: -p["updated"])
 
     def create(self, name, data=None):
@@ -411,9 +516,17 @@ class Workspace:
             if path.split(".")[0] not in PATCHABLE:
                 raise QuizError(f"Нельзя менять {path}")
         try:
-            self.patch_theme({k: v for k, v in set_.items() if is_theme_path(k)}, [k for k in unset if is_theme_path(k)])
-            return self.update(slug, lambda p: _apply_patch(p, {k: v for k, v in set_.items() if not is_theme_path(k)},
-                                                            [k for k in unset if not is_theme_path(k)]))
+            self.patch_theme(
+                {k: v for k, v in set_.items() if is_theme_path(k)}, [k for k in unset if is_theme_path(k)]
+            )
+            return self.update(
+                slug,
+                lambda p: _apply_patch(
+                    p,
+                    {k: v for k, v in set_.items() if not is_theme_path(k)},
+                    [k for k in unset if not is_theme_path(k)],
+                ),
+            )
         except ValueError as e:
             raise QuizError(str(e))
 
@@ -424,7 +537,11 @@ class Workspace:
                 if k not in DEFAULT_TRACK or k == "id" or (not internal and k not in TRACK_EDITABLE):
                     raise QuizError(f"Нельзя менять поле {k}")
                 if k == "start2":
-                    v = None if v in ("", None) else max(0.0, round(parse_time(v), 2) if isinstance(v, str) else float(v))
+                    v = (
+                        None
+                        if v in ("", None)
+                        else max(0.0, round(parse_time(v), 2) if isinstance(v, str) else float(v))
+                    )
                 elif k == "start":
                     v = round(parse_time(v), 2) if isinstance(v, str) else max(0.0, float(v or 0))
                 elif k == "enabled":
@@ -432,10 +549,12 @@ class Workspace:
                 elif k != "duration":
                     v = "" if v is None else str(v)
                 t[k] = v
+
         return self.update(slug, apply)
 
     def fill_track(self, slug, track_id, meta):
         """Дописывает данные, найденные автоматически, не трогая то, что ввёл пользователь."""
+
         def apply(p):
             try:
                 t = _find_track(p, track_id)
@@ -447,6 +566,7 @@ class Workspace:
                         t[k] = str(v)
                 else:
                     t[k] = v
+
         return self.update(slug, apply)
 
     def add_tracks(self, slug, tracks):
@@ -460,14 +580,18 @@ class Workspace:
             by_id = {t["id"]: t for t in p["tracks"]}
             ordered = [by_id.pop(i) for i in ids if i in by_id]
             p["tracks"] = ordered + list(by_id.values())
+
         return self.update(slug, apply)
 
     # --- файлы ---
     def save_upload(self, kind, name, stream, length):
         folders = {"font": "fonts", "image": "images", "cover": "covers/manual", "audio": "audio", "music": "music"}
-        allowed = {"font": {".ttf", ".otf"}, "image": {".jpg", ".jpeg", ".png", ".webp"},
-                   "cover": {".jpg", ".jpeg", ".png", ".webp"},
-                   "audio": {".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".webm", ".aac"}}
+        allowed = {
+            "font": {".ttf", ".otf"},
+            "image": {".jpg", ".jpeg", ".png", ".webp"},
+            "cover": {".jpg", ".jpeg", ".png", ".webp"},
+            "audio": {".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".webm", ".aac"},
+        }
         allowed["music"] = allowed["audio"]
         if kind not in folders:
             raise QuizError(f"Неизвестный тип файла: {kind}")
@@ -508,7 +632,9 @@ class Workspace:
         src = Path(path).expanduser().absolute()
         folder = self.library / "local"
         folder.mkdir(parents=True, exist_ok=True)
-        dest = folder / f"{safe_filename(src.stem)}-{hashlib.sha1(str(src).encode()).hexdigest()[:6]}{src.suffix.lower()}"
+        dest = (
+            folder / f"{safe_filename(src.stem)}-{hashlib.sha1(str(src).encode()).hexdigest()[:6]}{src.suffix.lower()}"
+        )
         if not dest.exists():
             dest.symlink_to(src)
         return self.rel(dest)
@@ -523,8 +649,20 @@ class Workspace:
 
 def local_meta(path):
     """Название, исполнитель, альбом, год и длительность из тегов файла (или из имени «Исполнитель - Песня»)."""
-    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration:format_tags:stream_tags",
-                        "-of", "json", str(path)], capture_output=True, text=True)
+    r = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration:format_tags:stream_tags",
+            "-of",
+            "json",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+    )
     try:
         data = json.loads(r.stdout or "{}")
     except json.JSONDecodeError:
@@ -537,14 +675,19 @@ def local_meta(path):
     if not title:
         stem = Path(path).stem
         parts = re.split(r"\s+[-–—]\s+", stem, maxsplit=1)
-        artist, title = (parts if len(parts) == 2 else (artist, stem))
+        artist, title = parts if len(parts) == 2 else (artist, stem)
     year = re.search(r"\d{4}", tags.get("date") or tags.get("year") or "")
     try:
         duration = float(data.get("format", {}).get("duration"))
     except (TypeError, ValueError):
         duration = None
-    return {"title": title, "artist": artist, "album": tags.get("album", ""),
-            "year": year.group(0) if year else "", "duration": duration}
+    return {
+        "title": title,
+        "artist": artist,
+        "album": tags.get("album", ""),
+        "year": year.group(0) if year else "",
+        "duration": duration,
+    }
 
 
 def _sha1(path):
@@ -581,15 +724,30 @@ def _coerce(value, default, path):
 # ───────────────────────── импорт списка треков ─────────────────────────
 
 ALIASES = {
-    "url": "url", "ссылка": "url", "link": "url", "youtube": "url",
-    "file": "file", "файл": "file", "трек": "file",
-    "start": "start", "начало": "start", "старт": "start",
-    "title": "title", "название": "title", "песня": "title",
-    "artist": "artist", "исполнитель": "artist", "артист": "artist",
-    "hint": "hint", "подсказка": "hint",
-    "cover": "cover", "обложка": "cover",
-    "album": "album", "альбом": "album",
-    "year": "year", "год": "year",
+    "url": "url",
+    "ссылка": "url",
+    "link": "url",
+    "youtube": "url",
+    "file": "file",
+    "файл": "file",
+    "трек": "file",
+    "start": "start",
+    "начало": "start",
+    "старт": "start",
+    "title": "title",
+    "название": "title",
+    "песня": "title",
+    "artist": "artist",
+    "исполнитель": "artist",
+    "артист": "artist",
+    "hint": "hint",
+    "подсказка": "hint",
+    "cover": "cover",
+    "обложка": "cover",
+    "album": "album",
+    "альбом": "album",
+    "year": "year",
+    "год": "year",
 }
 
 
@@ -703,8 +861,9 @@ def font_styles(path):
 def default_font():
     for path, style in SYSTEM_FONTS:
         if os.path.isfile(path):
-            if style and style.encode() not in [n if isinstance(n, bytes) else n.encode()
-                                               for n in _safe_variations(path)]:
+            if style and style.encode() not in [
+                n if isinstance(n, bytes) else n.encode() for n in _safe_variations(path)
+            ]:
                 style = ""
             return path, style
     raise QuizError("Не нашёл ни одного шрифта. Загрузите свой .ttf в конструкторе.")
@@ -739,6 +898,7 @@ class Fonts:
 
 
 # ───────────────────────── текст на картинке ─────────────────────────
+
 
 def line_height(font):
     ascent, descent = font.getmetrics()
@@ -805,8 +965,7 @@ class Renderer:
         self.style = style
         self.fonts = fonts
         self.bg = self._background(background)
-        self.ring = (SpectrumRing(ring_cfg, self.u, lambda s: fonts.get("heading", s))
-                     if ring_cfg is not None else None)
+        self.ring = SpectrumRing(ring_cfg, self.u, lambda s: fonts.get("heading", s)) if ring_cfg is not None else None
         self.sun = SpectrumRing(ring_cfg or RingConfig(), self.u * 0.9, self.hf)  # логотип на заставках
         self.logo = Image.open(logo).convert("RGBA") if logo and Path(logo).is_file() else None
 
@@ -825,8 +984,9 @@ class Renderer:
             img = ImageOps.fit(Image.open(path).convert("RGB"), (W, H), Image.Resampling.LANCZOS)
             return Image.blend(img, Image.new("RGB", (W, H), (0, 0, 0)), 0.5)
         grad = Image.linear_gradient("L").resize((W, H))
-        bg = Image.composite(Image.new("RGB", (W, H), self.c("bg_bottom")),
-                             Image.new("RGB", (W, H), self.c("bg_top")), grad)
+        bg = Image.composite(
+            Image.new("RGB", (W, H), self.c("bg_bottom")), Image.new("RGB", (W, H), self.c("bg_top")), grad
+        )
         glow = ImageOps.invert(Image.radial_gradient("L")).resize((W, H)).point(lambda v: v * 45 // 100)
         return Image.composite(Image.new("RGB", (W, H), self.c("glow")), bg, glow)
 
@@ -846,8 +1006,7 @@ class Renderer:
         w = d.textlength(text, font=font)
         h = sum(font.getmetrics())
         cx = self.W - margin - w / 2 - h * 0.7 if y > top else self.cx
-        box = (cx - w / 2 - h * 0.7, cy - h / 2 - h * 0.35,
-               cx + w / 2 + h * 0.7, cy + h / 2 + h * 0.35)
+        box = (cx - w / 2 - h * 0.7, cy - h / 2 - h * 0.35, cx + w / 2 + h * 0.7, cy + h / 2 + h * 0.35)
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         ImageDraw.Draw(overlay).rounded_rectangle(box, radius=(box[3] - box[1]) / 2, fill=(255, 255, 255, 38))
         if img.mode == "RGBA":  # прозрачный слой поверх видео: paste затёр бы прозрачность
@@ -866,8 +1025,9 @@ class Renderer:
         if self.logo is None:
             return self.sun.draw_sun(img, (self.cx, round(base_y)))
         h = self.logo_h()
-        logo = self.logo.resize((max(1, round(self.logo.width * h / self.logo.height)), round(h)),
-                                Image.Resampling.LANCZOS)
+        logo = self.logo.resize(
+            (max(1, round(self.logo.width * h / self.logo.height)), round(h)), Image.Resampling.LANCZOS
+        )
         img.paste(logo, (round(self.cx - logo.width / 2), round(base_y - h)), logo)
 
     def rounds_list(self, titles):
@@ -889,19 +1049,27 @@ class Renderer:
         x0 = (self.W - 2 * col_w - gap) / 2
         for k, col in enumerate((titles[:half], titles[half:])):
             for i, title in enumerate(col):
-                d.text((x0 + k * (col_w + gap) + col_w / 2, y + i * lh), title, font=font, fill=self.c("text"),
-                       anchor="ma")
+                d.text(
+                    (x0 + k * (col_w + gap) + col_w / 2, y + i * lh), title, font=font, fill=self.c("text"), anchor="ma"
+                )
         return img
 
     def title_card(self, title, subtitle="", sub_max_lines=2):
-        return self._stack([(title, self.hf, 0.13, 0.06, 3, "text"),
-                            (subtitle, self.tf, 0.055, 0.03, sub_max_lines, "muted")])
+        return self._stack(
+            [(title, self.hf, 0.13, 0.06, 3, "text"), (subtitle, self.tf, 0.055, 0.03, sub_max_lines, "muted")]
+        )
 
     def round_card(self, title, subtitle, rules):
         """Заставка тура: название, краткое описание, правила; весь блок чуть выше центра."""
-        return self._stack([(title, self.hf, 0.13, 0.06, 3, "text"),
-                            (subtitle, self.tf, 0.06, 0.035, 3, "text"),
-                            (rules, self.tf, 0.042, 0.03, 4, "muted")], lift=ROUND_LIFT, logo_drop=ROUND_LOGO_DROP)
+        return self._stack(
+            [
+                (title, self.hf, 0.13, 0.06, 3, "text"),
+                (subtitle, self.tf, 0.06, 0.035, 3, "text"),
+                (rules, self.tf, 0.042, 0.03, 4, "muted"),
+            ],
+            lift=ROUND_LIFT,
+            logo_drop=ROUND_LOGO_DROP,
+        )
 
     def _stack(self, blocks, lift=0.0, logo_drop=0.0):
         """Логотип и под ним блоки текста (текст, шрифт, размер, мин. размер в долях u, строк, цвет)
@@ -909,8 +1077,11 @@ class Renderer:
         img = self.bg.copy()
         d = ImageDraw.Draw(img)
         max_w = self.W * 0.86
-        fitted = [(*fit_text(d, text, max_w, self.u * hi, self.u * lo, n, font), color)
-                  for text, font, hi, lo, n, color in blocks if text]
+        fitted = [
+            (*fit_text(d, text, max_w, self.u * hi, self.u * lo, n, font), color)
+            for text, font, hi, lo, n, color in blocks
+            if text
+        ]
         eq_h, gap = self.logo_h(), self.u * 0.024
         logo_gap = self.u * 0.025  # от основания солнца до текста
         total = eq_h + logo_gap + sum(line_height(f) * len(ls) for f, ls, _ in fitted) + gap * max(0, len(fitted) - 1)
@@ -994,8 +1165,7 @@ class Renderer:
         return img.resize((size, size), Image.Resampling.LANCZOS)
 
     def _paste_cover(self, img, cover, x, y, size):
-        art = (ImageOps.fit(cover, (size, size), Image.Resampling.LANCZOS) if cover is not None
-               else self._vinyl(size))
+        art = ImageOps.fit(cover, (size, size), Image.Resampling.LANCZOS) if cover is not None else self._vinyl(size)
         mask = Image.new("L", (size, size), 0)
         ImageDraw.Draw(mask).rounded_rectangle((0, 0, size - 1, size - 1), radius=int(size * 0.035), fill=255)
         pad = int(self.u * 0.04)
@@ -1126,17 +1296,34 @@ class Renderer:
 
     def video_answer_frames(self, path, start, overlay, n_frames):
         """Кадры видео с подписью; если видео короче — держится последний кадр."""
-        cmd = ["ffmpeg", "-v", "error", "-ss", f"{start:.3f}", "-i", str(path), "-an",
-               "-vf", f"scale={self.W}:{self.H}:force_original_aspect_ratio=increase,crop={self.W}:{self.H},fps={FPS}",
-               "-frames:v", str(n_frames), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+        cmd = [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-ss",
+            f"{start:.3f}",
+            "-i",
+            str(path),
+            "-an",
+            "-vf",
+            f"scale={self.W}:{self.H}:force_original_aspect_ratio=increase,crop={self.W}:{self.H},fps={FPS}",
+            "-frames:v",
+            str(n_frames),
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-",
+        ]
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         size, frame = self.W * self.H * 3, None
         try:
             for _ in range(n_frames):
                 data = proc.stdout.read(size)
                 if len(data) == size:
-                    frame = Image.alpha_composite(Image.frombytes("RGB", (self.W, self.H), data).convert("RGBA"),
-                                                  overlay).convert("RGB")
+                    frame = Image.alpha_composite(
+                        Image.frombytes("RGB", (self.W, self.H), data).convert("RGBA"), overlay
+                    ).convert("RGB")
                 yield frame if frame is not None else overlay.convert("RGB")
         finally:
             proc.kill()
@@ -1163,16 +1350,35 @@ def make_renderer(ws, project, size=None):
             ImageColor.getrgb(style[key])
         except (ValueError, KeyError):
             raise QuizError(f"Не понимаю цвет {key}: «{style.get(key)}»")
-    return Renderer(W, H, style, Fonts(ws, project["fonts"]), ring_config(project),
-                    ws.resolve(style.get("background")), ws.resolve(style.get("logo")))
+    return Renderer(
+        W,
+        H,
+        style,
+        Fonts(ws, project["fonts"]),
+        ring_config(project),
+        ws.resolve(style.get("background")),
+        ws.resolve(style.get("logo")),
+    )
 
 
 # ───────────────────────── звук ─────────────────────────
 
+
 def probe_duration(path):
-    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
-                        "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-                       capture_output=True, text=True)
+    r = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+    )
     if r.returncode != 0:
         return False, None
     try:
@@ -1192,15 +1398,21 @@ def extract_fragment(src, start, n_samples):
     m = json.loads("{" + r.stderr.decode(errors="replace").rsplit("{", 1)[-1])  # замер loudnorm — JSON в конце
     gain = min(LOUDNESS - float(m["input_i"]), -1.5 - float(m["input_tp"]), 6.0)  # тихое не тянем больше чем на 6 дБ
     af = f"volume={gain:.2f}dB,aresample={SAMPLE_RATE},apad,atrim=end_sample={n_samples}"
-    cmd = cut[:1] + ["-v", "error"] + cut[2:] + ["-map_metadata", "-1", "-af", af, "-ac", "2", "-ar", str(SAMPLE_RATE),
-                                              "-f", "s16le", "-"]
+    cmd = (
+        cut[:1]
+        + ["-v", "error"]
+        + cut[2:]
+        + ["-map_metadata", "-1", "-af", af, "-ac", "2", "-ar", str(SAMPLE_RATE), "-f", "s16le", "-"]
+    )
     r = subprocess.run(cmd, capture_output=True)
     if r.returncode != 0:
-        raise QuizError(f"Не удалось вырезать отрывок из {Path(src).name}:\n{r.stderr.decode(errors='replace').strip()}")
+        raise QuizError(
+            f"Не удалось вырезать отрывок из {Path(src).name}:\n{r.stderr.decode(errors='replace').strip()}"
+        )
     data = np.frombuffer(r.stdout, dtype="<i2")
-    data = data[:len(data) // 2 * 2].reshape(-1, 2)
+    data = data[: len(data) // 2 * 2].reshape(-1, 2)
     audio = np.zeros((n_samples, 2), dtype=np.float32)
-    audio[:min(n_samples, len(data))] = data[:n_samples] / 32768.0
+    audio[: min(n_samples, len(data))] = data[:n_samples] / 32768.0
     return audio
 
 
@@ -1214,12 +1426,15 @@ def speech(ws, voice, text):
     text = re.sub(r"\+([аеёиоуыэюяАЕЁИОУЫЭЮЯ])", "\\1\u0301", text)  # «р+еперов» → знак ударения
     folder = ws.library / "voices"
     edge = voice.startswith("ru-RU-")
-    out = folder / "speech" / f"{hashlib.sha1((voice + chr(10) + text).encode()).hexdigest()}.{'mp3' if edge else 'wav'}"
+    out = (
+        folder / "speech" / f"{hashlib.sha1((voice + chr(10) + text).encode()).hexdigest()}.{'mp3' if edge else 'wav'}"
+    )
     if not out.is_file():
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(".part" + out.suffix)
         if edge:
             import edge_tts
+
             for attempt in range(12):  # сервис Microsoft отвечает через раз — повторяем
                 try:
                     edge_tts.Communicate(text, voice).save_sync(str(tmp))
@@ -1228,14 +1443,20 @@ def speech(ws, voice, text):
                     error = e
                     time.sleep(1 + attempt)
             else:
-                raise QuizError(f"Сервис Microsoft не озвучил текст «{text[:40]}» за 12 попыток "
-                                f"(нужен интернет, или попробуйте другой голос): {error}")
+                raise QuizError(
+                    f"Сервис Microsoft не озвучил текст «{text[:40]}» за 12 попыток "
+                    f"(нужен интернет, или попробуйте другой голос): {error}"
+                )
         else:
             model = folder / f"{voice}.onnx"
             if not model.is_file():  # голос скачивается один раз, ~60 МБ
-                subprocess.run([sys.executable, "-m", "piper.download_voices", "--data-dir", str(folder), voice],
-                               check=True, capture_output=True)
+                subprocess.run(
+                    [sys.executable, "-m", "piper.download_voices", "--data-dir", str(folder), voice],
+                    check=True,
+                    capture_output=True,
+                )
             from piper import PiperVoice
+
             with wave.open(str(tmp), "wb") as w:
                 PiperVoice.load(str(model)).synthesize_wav(text, w)
         os.replace(tmp, out)
@@ -1254,8 +1475,9 @@ def music_audio(ws, source, n_samples):
     _, start, _ = youtube.parse_url(source)
     try:
         extra = shlex.split(ws.settings().get("ytdlp_args") or "")
-        res = youtube.download(source, ws.library / "youtube", extra_args=extra,
-                               has_js=bool(youtube.tool_info().get("js_runtime")))
+        res = youtube.download(
+            source, ws.library / "youtube", extra_args=extra, has_js=bool(youtube.tool_info().get("js_runtime"))
+        )
     except youtube.DownloadError as e:
         raise QuizError(f"Не удалось скачать фоновую музыку {source}: {e}")
     return extract_fragment(res["audio"], start or 0, n_samples)
@@ -1312,15 +1534,17 @@ def waveform(ws, path, buckets=1000):
     if cache.is_file():
         return json.loads(cache.read_text())
     rate = 4000
-    r = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", str(rate),
-                        "-f", "s16le", "-"], capture_output=True)
+    r = subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", str(rate), "-f", "s16le", "-"],
+        capture_output=True,
+    )
     x = np.abs(np.frombuffer(r.stdout, dtype="<i2").astype(np.float32))
     duration = len(x) / rate
     if len(x) < buckets:
         peaks = np.zeros(buckets)
     else:
-        x = x[:len(x) // buckets * buckets].reshape(buckets, -1)
-        peaks = np.sqrt(np.mean(x ** 2, axis=1))  # RMS — видно припевы, а не только пики
+        x = x[: len(x) // buckets * buckets].reshape(buckets, -1)
+        peaks = np.sqrt(np.mean(x**2, axis=1))  # RMS — видно припевы, а не только пики
         top = np.percentile(peaks, 99) or 1
         peaks = np.clip(peaks / top, 0, 1)
     data = {"duration": duration, "peaks": [round(float(v), 3) for v in peaks]}
@@ -1331,6 +1555,7 @@ def waveform(ws, path, buckets=1000):
 
 # ───────────────────────── подготовка к сборке ─────────────────────────
 
+
 def track_label(t):
     label = f"{t['artist']} — {t['title']}" if t.get("artist") else (t.get("title") or t.get("url") or "без названия")
     return label.replace("\n", ", ")  # переносы — только для слайдов
@@ -1340,10 +1565,19 @@ def track_row(ws, t):
     """Строка трека для слайдов: поля трека с полными путями. Единственное место, где перечислены эти поля."""
     path = ws.resolve(t.get("file"))
     return {
-        "id": t["id"], "round": t["round"], "path": path, "start": float(t["start"] or 0), "start2": t["start2"],
-        "title": t["title"] or (path.stem if path else "без названия"), "artist": t["artist"],
-        "album": t["album"], "year": t["year"], "hint": t["hint"],
-        "question": t["question"], "answer": t["answer"], "answer_video": t["answer_video"],
+        "id": t["id"],
+        "round": t["round"],
+        "path": path,
+        "start": float(t["start"] or 0),
+        "start2": t["start2"],
+        "title": t["title"] or (path.stem if path else "без названия"),
+        "artist": t["artist"],
+        "album": t["album"],
+        "year": t["year"],
+        "hint": t["hint"],
+        "question": t["question"],
+        "answer": t["answer"],
+        "answer_video": t["answer_video"],
         "video_source": t["video_source"],
         "cover": ws.resolve(t["cover"]) if t.get("cover") else None,
         "thumb": ws.resolve(t["thumb"]) if t.get("thumb") else None,
@@ -1373,8 +1607,11 @@ def prepare_rows(ws, project):
 
 
 def cover_finder(ws, project):
-    return CoverFinder(ws.library / "covers" / "auto", online=project["covers"]["online"],
-                       itunes_country=project["covers"].get("itunes_country") or "US")
+    return CoverFinder(
+        ws.library / "covers" / "auto",
+        online=project["covers"]["online"],
+        itunes_country=project["covers"].get("itunes_country") or "US",
+    )
 
 
 def apply_covers(rows, results):
@@ -1398,9 +1635,16 @@ def find_covers(ws, slug, track_ids=None, log=print, progress=None, cancel=None,
         if cancel is not None and cancel.is_set():
             return
         r = rows[i]
-        ws.fill_track(slug, r["id"], {
-            "cover_auto": ws.rel(info["file"]) if info["file"] else "",
-            "cover_source": info["source"], "album": info["album"], "year": info["year"]})
+        ws.fill_track(
+            slug,
+            r["id"],
+            {
+                "cover_auto": ws.rel(info["file"]) if info["file"] else "",
+                "cover_source": info["source"],
+                "album": info["album"],
+                "year": info["year"],
+            },
+        )
         done[0] += 1
         log(f"{track_label(r)}: {info['source']}")
         if progress:
@@ -1420,8 +1664,13 @@ def download_tracks(ws, slug, ids=None, log=print, states=None, progress=None, c
     import youtube
 
     project = ws.load(slug)
-    todo = [t for t in project["tracks"] if t.get("url") and (not ids or t["id"] in ids)
-            and not (ws.resolve(t.get("file")) and ws.resolve(t["file"]).is_file())]
+    todo = [
+        t
+        for t in project["tracks"]
+        if t.get("url")
+        and (not ids or t["id"] in ids)
+        and not (ws.resolve(t.get("file")) and ws.resolve(t["file"]).is_file())
+    ]
     if not todo:
         log("Все треки уже скачаны")
         return {"downloaded": 0, "failed": 0}
@@ -1441,8 +1690,7 @@ def download_tracks(ws, slug, ids=None, log=print, states=None, progress=None, c
     progress = progress or (lambda frac, stage: None)
 
     def update_total():
-        progress(sum(s["progress"] for s in states.values()) / len(states) * 0.9,
-                 f"Скачано {len(done)} из {len(todo)}")
+        progress(sum(s["progress"] for s in states.values()) / len(states) * 0.9, f"Скачано {len(done)} из {len(todo)}")
 
     def one(t):
         st = states[t["id"]]
@@ -1456,13 +1704,24 @@ def download_tracks(ws, slug, ids=None, log=print, states=None, progress=None, c
             update_total()
 
         try:
-            res = youtube.download(t["url"], ws.library / "youtube", on_progress, cancel, extra,
-                                   has_js=bool(tools.get("js_runtime")))
+            res = youtube.download(
+                t["url"], ws.library / "youtube", on_progress, cancel, extra, has_js=bool(tools.get("js_runtime"))
+            )
             duration = res["duration"] or probe_duration(res["audio"])[1]
-            ws.fill_track(slug, t["id"], {
-                "file": ws.rel(res["audio"]), "thumb": ws.rel(res["thumb"]) if res["thumb"] else "",
-                "duration": duration, "error": "",
-                "title": res["title"], "artist": res["artist"], "album": res["album"], "year": res["year"]})
+            ws.fill_track(
+                slug,
+                t["id"],
+                {
+                    "file": ws.rel(res["audio"]),
+                    "thumb": ws.rel(res["thumb"]) if res["thumb"] else "",
+                    "duration": duration,
+                    "error": "",
+                    "title": res["title"],
+                    "artist": res["artist"],
+                    "album": res["album"],
+                    "year": res["year"],
+                },
+            )
             st.update(state="done", progress=1.0)
             done.append(t["id"])
             shown = {"title": t.get("title") or res["title"], "artist": t.get("artist") or res["artist"]}
@@ -1487,6 +1746,7 @@ def download_tracks(ws, slug, ids=None, log=print, states=None, progress=None, c
 
 
 # ───────────────────────── предпросмотр ─────────────────────────
+
 
 def _fake_levels(n_frames, n_bars, seed=3):
     rng = np.random.default_rng(seed)
@@ -1523,7 +1783,7 @@ def _question_levels(r, slide):
                 fake = _fake_levels(slide.frames - slide.lead_frames, r.ring.n_bars)
                 return np.concatenate([np.zeros((slide.lead_frames, fake.shape[1]), dtype=fake.dtype), fake])
             win = extract_fragment_cached(part.path, part.start, part.window)
-            parts.append(with_fades(win[part.offset:part.offset + part.samples], part.fade_in, part.fade_out))
+            parts.append(with_fades(win[part.offset : part.offset + part.samples], part.fade_in, part.fade_out))
         else:
             parts.append(np.zeros((part.samples, 2), dtype=np.float32))
     return analyze(np.concatenate(parts).mean(axis=1), SAMPLE_RATE, slide.frames, FPS, r.ring.cfg)
@@ -1537,14 +1797,33 @@ def preview(ws, slug, track_id=None, log=print):
     r = make_renderer(ws, project)
     cover_file = ws.project_dir(slug) / "cover.png"
     enabled = [t for t in project["tracks"] if t.get("enabled", True)]
-    track = next((t for t in enabled if t["id"] == track_id), None) or \
-        next((t for t in enabled if ws.resolve(t.get("file")) and ws.resolve(t["file"]).is_file()), None) or \
-        (enabled[0] if enabled else None)
+    track = (
+        next((t for t in enabled if t["id"] == track_id), None)
+        or next((t for t in enabled if ws.resolve(t.get("file")) and ws.resolve(t["file"]).is_file()), None)
+        or (enabled[0] if enabled else None)
+    )
     rows = [track_row(ws, t) for t in enabled]
     if not rows:  # пример без треков
-        rows = [{"id": "", "round": project["rounds"][0]["id"], "path": None, "start": 0.0, "start2": None, "hint": "",
-                 "title": "Название песни", "artist": "Исполнитель", "album": "Альбом", "year": "2004",
-                 "question": "", "answer": "", "answer_video": "", "video_source": "", "cover": None, "thumb": None}]
+        rows = [
+            {
+                "id": "",
+                "round": project["rounds"][0]["id"],
+                "path": None,
+                "start": 0.0,
+                "start2": None,
+                "hint": "",
+                "title": "Название песни",
+                "artist": "Исполнитель",
+                "album": "Альбом",
+                "year": "2004",
+                "question": "",
+                "answer": "",
+                "answer_video": "",
+                "video_source": "",
+                "cover": None,
+                "thumb": None,
+            }
+        ]
     row = next((x for x in rows if track and x["id"] == track["id"]), rows[0])
     opening = "social_cover" if cover_file.is_file() and project["timing"]["cover"] > 0 else "quiz_intro"
     picked = preview_slides(project, rows, row, opening)
@@ -1554,8 +1833,10 @@ def preview(ws, slug, track_id=None, log=print):
     social_cover = Image.open(cover_file).convert("RGB") if opening == "social_cover" else None
     videos = {}
     if row["answer_video"]:
-        videos[row["answer_video"]] = (answer_video_file(ws, row["answer_video"]),
-                                       youtube.parse_url(row["answer_video"])[1] or 0)
+        videos[row["answer_video"]] = (
+            answer_video_file(ws, row["answer_video"]),
+            youtube.parse_url(row["answer_video"])[1] or 0,
+        )
 
     q = picked.pop("question")
     lead, q_frames = q.lead_frames, q.frames - q.lead_frames
@@ -1564,15 +1845,17 @@ def preview(ws, slug, track_id=None, log=print):
     levels = _question_levels(r, q)
     reveal_s = min(r.ring.cfg.reveal_seconds, lead / FPS) if lead else r.ring.cfg.reveal_seconds
     images = {
-        "reveal": r.question_frame(base, levels, min(lead + q_frames - 1, int(reveal_s * FPS * 0.45)), q_frames,
-                                   pre_frames=lead),
+        "reveal": r.question_frame(
+            base, levels, min(lead + q_frames - 1, int(reveal_s * FPS * 0.45)), q_frames, pre_frames=lead
+        ),
         "question": r.question_frame(base, levels, lead + int(q_frames * 0.55), q_frames, pre_frames=lead),
     }
     for name, slide in picked.items():
         if slide.kind == "triple_answer":  # все песни тройки сразу
             a = slide.texts
-            img = r.answer_group_card(a["label"], list(slide.tracks), len(slide.tracks),
-                                      (a["round_label"], a["round_title"]))
+            img = r.answer_group_card(
+                a["label"], list(slide.tracks), len(slide.tracks), (a["round_label"], a["round_title"])
+            )
         else:
             img = render_slide(r, slide, None, social_cover, videos)
             if not isinstance(img, Image.Image):  # видео ответа — стоп-кадр из его начала
@@ -1614,6 +1897,7 @@ def answers_sheet(ws, slug, log=print):
 
 
 # ───────────────────────── сборка ─────────────────────────
+
 
 class VideoWriter:
     def __init__(self, proc, cancel=None, on_frame=None):
@@ -1734,11 +2018,43 @@ class FfmpegEncoder:
             w.setframerate(SAMPLE_RATE)
             for chunk in chunks:
                 w.writeframes((np.clip(chunk, -1, 1) * 32767).astype("<i2").tobytes())
-        cmd = ["ffmpeg", "-v", "error", "-y",
-               "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}", "-r", str(FPS), "-i", "-",
-               "-i", str(audio_path), "-map", "0:v", "-map", "1:a",
-               "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-               "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(self.partial)]
+        cmd = [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-s",
+            f"{width}x{height}",
+            "-r",
+            str(FPS),
+            "-i",
+            "-",
+            "-i",
+            str(audio_path),
+            "-map",
+            "0:v",
+            "-map",
+            "1:a",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
+            str(self.partial),
+        ]
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
         self.writer = VideoWriter(self.proc, cancel, on_frame)
 
@@ -1793,7 +2109,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
             raise QuizError(f"В раунде «{rnd['title']}» нет включённых треков")
     rounds = group_rounds(project, rows)
     if limit:  # пробный ролик — первые N вопросов каждого раунда
-        rounds = [(rnd, rs[:int(limit)]) for rnd, rs in rounds]
+        rounds = [(rnd, rs[: int(limit)]) for rnd, rs in rounds]
     rows = [row for _, rs in rounds for row in rs]
     renderer = make_renderer(ws, project)
     media = media or Media(ws, project)
@@ -1827,16 +2143,22 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         return speeches[text]
 
     opening = "social_cover" if cover_file.is_file() and timing["cover"] > 0 else "quiz_intro"
-    slides = sc.build_scenario(project, rounds, lambda text: len(narration_audio(text)) / SAMPLE_RATE,
-                               opening, "round_trial" if round_id else "whole_quiz")
+    slides = sc.build_scenario(
+        project,
+        rounds,
+        lambda text: len(narration_audio(text)) / SAMPLE_RATE,
+        opening,
+        "round_trial" if round_id else "whole_quiz",
+    )
     if cancel is not None and cancel.is_set():
         raise Cancelled()
 
     # 3. Отрывки (параллельно) и видео ответов
     progress(0.02, "Нарезаю отрывки")
     log("Нарезаю отрывки…")
-    windows = list(dict.fromkeys((c.path, c.start, c.window) for s in slides for c in s.sound
-                                 if isinstance(c, sc.Clip)))
+    windows = list(
+        dict.fromkeys((c.path, c.start, c.window) for s in slides for c in s.sound if isinstance(c, sc.Clip))
+    )
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
         cut = dict(zip(windows, pool.map(lambda w: media.cut(*w), windows)))
     if cancel is not None and cancel.is_set():
@@ -1851,7 +2173,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     def part_audio(part):
         if isinstance(part, sc.Clip):
             win = cut[(part.path, part.start, part.window)]
-            return with_fades(win[part.offset:part.offset + part.samples], part.fade_in, part.fade_out)
+            return with_fades(win[part.offset : part.offset + part.samples], part.fade_in, part.fade_out)
         if isinstance(part, sc.Silence):
             return np.zeros((part.samples, 2), dtype=np.float32)
         if isinstance(part, sc.Narration):
@@ -1868,11 +2190,13 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         bed = with_fades(media.music(music, sum(lens)), 0.5, 1.5) * float(project["music_volume"])
         for k, part in zip(ks, np.split(bed, np.cumsum(lens)[:-1])):
             if audios[k] is not None:
-                part[:len(audios[k])] += audios[k][:len(part)]
+                part[: len(audios[k])] += audios[k][: len(part)]
             audios[k] = part
     total_frames = sum(s.frames for s in slides)
-    log(f"Квиз: {n} {plural(n, 'трек', 'трека', 'треков')}, видео {fmt_ts(total_frames / FPS)}, "
-        f"{renderer.W}x{renderer.H}")
+    log(
+        f"Квиз: {n} {plural(n, 'трек', 'трека', 'треков')}, видео {fmt_ts(total_frames / FPS)}, "
+        f"{renderer.W}x{renderer.H}"
+    )
 
     social_cover = Image.open(cover_file).convert("RGB") if opening == "social_cover" else None
     # 4. Звук точно по кадрам, кадры — в кодировщик
@@ -1880,7 +2204,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     for slide, audio in zip(slides, audios):
         chunk = np.zeros((slide.frames * SAMPLES_PER_FRAME, 2), dtype=np.float32)
         if audio is not None:
-            chunk[:min(len(chunk), len(audio))] = audio[:len(chunk)]
+            chunk[: min(len(chunk), len(audio))] = audio[: len(chunk)]
         chunks.append(chunk)
     del audios  # дальше нужен только звук, выровненный по кадрам
     written = [0]
@@ -1912,8 +2236,14 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     if cover_file.is_file():  # обложка для соцсетей; JPEG 1280×720 укладывается в лимит YouTube
         ImageOps.fit(Image.open(cover_file).convert("RGB"), (1280, 720)).save(thumb, quality=90)
     else:
-        Renderer(1280, 720, project["style"], renderer.fonts, renderer.ring.cfg,
-                 background=ws.resolve(project["style"].get("background"))).title_card(intro_title).save(thumb, quality=92)
+        Renderer(
+            1280,
+            720,
+            project["style"],
+            renderer.fonts,
+            renderer.ring.cfg,
+            background=ws.resolve(project["style"].get("background")),
+        ).title_card(intro_title).save(thumb, quality=92)
 
     desc_lines = [f"{intro_title}!"] + ([intro_subtitle] if intro_subtitle else []) + [""]
     desc_lines += [f"{fmt_ts(ts)} {name}" for ts, name in sc.chapters(slides)] + ["", "Ответы:"]
@@ -1921,8 +2251,10 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         if len(rounds) > 1:
             desc_lines.append(round_title(rnd, k))
         if is_three_tries(rnd):
-            desc_lines += [f"{g}. {group_answer(grp)} — {', '.join(r['title'] for r in grp)}"
-                           for g, grp in enumerate(answer_groups(rnd, rs), start=1)]
+            desc_lines += [
+                f"{g}. {group_answer(grp)} — {', '.join(r['title'] for r in grp)}"
+                for g, grp in enumerate(answer_groups(rnd, rs), start=1)
+            ]
         else:
             desc_lines += [f"{i}. {track_label(row)}" for i, row in enumerate(rs, start=1)]
     desc = out_dir / f"{stem}_description.txt"
@@ -1930,6 +2262,12 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
 
     log(f"Готово за {fmt_ts(time.time() - started)}: {ws.rel(out)}")
     progress(1.0, "Готово")
-    return {"video": ws.rel(out), "thumbnail": ws.rel(thumb), "description": ws.rel(desc),
-            "description_text": desc.read_text(encoding="utf-8"), "duration": total_frames / FPS,
-            "songs": n, "seconds": round(time.time() - started, 1)}
+    return {
+        "video": ws.rel(out),
+        "thumbnail": ws.rel(thumb),
+        "description": ws.rel(desc),
+        "description_text": desc.read_text(encoding="utf-8"),
+        "duration": total_frames / FPS,
+        "songs": n,
+        "seconds": round(time.time() - started, 1),
+    }

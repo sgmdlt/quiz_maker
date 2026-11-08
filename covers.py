@@ -34,10 +34,13 @@ TIMEOUT = 12
 MIN_GOOD_SIZE = 400
 COMPILATION = re.compile(
     r"greatest hits|best of|the best|collection|anthology|essentials|hits\b|"
-    r"сборник|лучшее|лучшие песни|хиты", re.IGNORECASE)
+    r"сборник|лучшее|лучшие песни|хиты",
+    re.IGNORECASE,
+)
 
 
 # ───────────────────────── сравнение названий ─────────────────────────
+
 
 def _norm(s):
     s = (s or "").lower().replace("ё", "е")
@@ -59,8 +62,11 @@ def similar(a, b):
 def pick_best(candidates, artist, title):
     """Из результатов поиска выбирает подходящий: совпадают исполнитель и название,
     оригинальный альбом предпочтительнее сборника."""
-    good = [c for c in candidates
-            if c.get("url") and similar(c["artist"], artist) >= 0.6 and similar(c["title"], title) >= 0.5]
+    good = [
+        c
+        for c in candidates
+        if c.get("url") and similar(c["artist"], artist) >= 0.6 and similar(c["title"], title) >= 0.5
+    ]
     if not good:
         return None
     regular = [c for c in good if not COMPILATION.search(c.get("album") or "")]
@@ -68,6 +74,7 @@ def pick_best(candidates, artist, title):
 
 
 # ───────────────────────── интернет ─────────────────────────
+
 
 def _get(url):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -85,14 +92,16 @@ def parse_deezer(data):
         album = it.get("album") or {}
         if not album.get("md5_image") and not album.get("cover_xl"):
             continue
-        out.append({
-            "artist": (it.get("artist") or {}).get("name", ""),
-            "title": it.get("title", ""),
-            "album": album.get("title", ""),
-            "album_id": album.get("id"),
-            "url": album.get("cover_xl") or album.get("cover_big"),
-            "source": "Deezer",
-        })
+        out.append(
+            {
+                "artist": (it.get("artist") or {}).get("name", ""),
+                "title": it.get("title", ""),
+                "album": album.get("title", ""),
+                "album_id": album.get("id"),
+                "url": album.get("cover_xl") or album.get("cover_big"),
+                "source": "Deezer",
+            }
+        )
     return out
 
 
@@ -118,15 +127,17 @@ def parse_itunes(data):
         art = it.get("artworkUrl100")
         if not art:
             continue
-        out.append({
-            "artist": it.get("artistName", ""),
-            "title": it.get("trackName", ""),
-            "album": it.get("collectionName", ""),
-            "url": art.replace("100x100bb", "1000x1000bb"),
-            "url_fallback": art.replace("100x100bb", "600x600bb"),
-            "year": (it.get("releaseDate") or "")[:4],
-            "source": "iTunes",
-        })
+        out.append(
+            {
+                "artist": it.get("artistName", ""),
+                "title": it.get("trackName", ""),
+                "album": it.get("collectionName", ""),
+                "url": art.replace("100x100bb", "1000x1000bb"),
+                "url_fallback": art.replace("100x100bb", "600x600bb"),
+                "year": (it.get("releaseDate") or "")[:4],
+                "source": "iTunes",
+            }
+        )
     return out
 
 
@@ -151,12 +162,15 @@ def download_image(urls, dest):
 
 # ───────────────────────── файл ─────────────────────────
 
+
 def extract_embedded(audio, dest):
     """Достаёт вшитую обложку. Возвращает размер (меньшую сторону) или 0."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     if not dest.exists():
-        r = subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(audio), "-an", "-map", "0:v:0?",
-                            "-frames:v", "1", str(dest)], capture_output=True)
+        r = subprocess.run(
+            ["ffmpeg", "-v", "error", "-y", "-i", str(audio), "-an", "-map", "0:v:0?", "-frames:v", "1", str(dest)],
+            capture_output=True,
+        )
         if r.returncode != 0:
             dest.unlink(missing_ok=True)
     if not dest.exists() or dest.stat().st_size == 0:
@@ -183,8 +197,11 @@ def trim_borders(src, dest, threshold=24):
 
 
 def read_tags(audio):
-    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags:stream_tags",
-                        "-of", "json", str(audio)], capture_output=True, text=True)
+    r = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format_tags:stream_tags", "-of", "json", str(audio)],
+        capture_output=True,
+        text=True,
+    )
     try:
         data = json.loads(r.stdout or "{}")
     except json.JSONDecodeError:
@@ -213,6 +230,7 @@ def _file_key(path):
 
 
 # ───────────────────────── поиск для списка песен ─────────────────────────
+
 
 class CoverFinder:
     """track — словарь с ключами: path (аудио), artist, title и необязательными
@@ -264,8 +282,12 @@ class CoverFinder:
 
     def find(self, track):
         """Возвращает dict: file (Path или None), source (откуда), album, year."""
-        info = {"file": None, "source": "не найдена — будет пластинка",
-                "album": track.get("album", ""), "year": track.get("year", "")}
+        info = {
+            "file": None,
+            "source": "не найдена — будет пластинка",
+            "album": track.get("album", ""),
+            "year": track.get("year", ""),
+        }
         audio = track.get("path")
         if audio and Path(audio).is_file():
             tag_album, tag_year = read_tags(audio)
@@ -298,8 +320,12 @@ class CoverFinder:
             found = self._search_online(artist, title)
             if found and download_image([found.get("url"), found.get("url_fallback")], cached):
                 with self._lock:
-                    self.meta[key] = {"album": found.get("album", ""), "year": found.get("year", ""),
-                                      "source": found["source"], "found_as": f"{found['artist']} — {found['title']}"}
+                    self.meta[key] = {
+                        "album": found.get("album", ""),
+                        "year": found.get("year", ""),
+                        "source": found["source"],
+                        "found_as": f"{found['artist']} — {found['title']}",
+                    }
                 info.update(file=cached, source=found["source"])
                 info["album"] = info["album"] or found.get("album", "")
                 info["year"] = info["year"] or found.get("year", "")

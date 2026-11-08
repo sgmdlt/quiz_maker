@@ -1,4 +1,5 @@
 """Сборка ролика с тестовыми побочными эффектами: без ffmpeg, сети и диктора."""
+
 import numpy as np
 from PIL import Image
 
@@ -57,8 +58,16 @@ def _quiz(tmp_path, tracks, **kw):
     for k, t in enumerate(tracks):
         (tmp_path / f"{k}.wav").write_bytes(b"")
         t.update(file=f"{k}.wav", duration=120.0)
-    slug = ws.create("Тест", {"voice": "", "covers": {"online": False},
-                              "rounds": [{"id": "r1", "title": "Раунд", "rules": "", "gap": 1}], "tracks": tracks, **kw})
+    slug = ws.create(
+        "Тест",
+        {
+            "voice": "",
+            "covers": {"online": False},
+            "rounds": [{"id": "r1", "title": "Раунд", "rules": "", "gap": 1}],
+            "tracks": tracks,
+            **kw,
+        },
+    )
     return ws, slug
 
 

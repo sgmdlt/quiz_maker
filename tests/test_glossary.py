@@ -12,7 +12,8 @@ def test_round_title_falls_back_to_round_number():
 
 
 def test_round_kind_replaces_three_tries_flag():
-    p = qc.normalize({"rounds": [{"id": "a", "title": "", "rules": "", "three_tries": True},
-                                 {"id": "b", "title": "", "rules": ""}]})
+    p = qc.normalize(
+        {"rounds": [{"id": "a", "title": "", "rules": "", "three_tries": True}, {"id": "b", "title": "", "rules": ""}]}
+    )
     assert [r["kind"] for r in p["rounds"]] == ["three_tries", "regular"]
     assert "three_tries" not in p["rounds"][0]

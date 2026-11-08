@@ -42,12 +42,14 @@ class Cancelled(Exception):
 
 # ───────────────────────── инструменты ─────────────────────────
 
+
 def ytdlp_command():
     exe = shutil.which("yt-dlp")
     if exe:
         return [exe]
     try:
         import yt_dlp  # noqa: F401
+
         return [sys.executable, "-m", "yt_dlp"]
     except ImportError:
         return None
@@ -68,8 +70,9 @@ def tool_info(force=False):
         try:
             r = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=30)
             info["ytdlp"] = r.stdout.strip() or None
-            r = subprocess.run(cmd + ["--ignore-config", "-v", "--simulate", "about:blank"],
-                               capture_output=True, text=True, timeout=30)
+            r = subprocess.run(
+                cmd + ["--ignore-config", "-v", "--simulate", "about:blank"], capture_output=True, text=True, timeout=30
+            )
             m = re.search(r"JS runtimes:\s*(.+)", r.stdout + r.stderr)
             runtime = m.group(1).strip() if m else ""
             if runtime and runtime.lower() != "none":
@@ -83,6 +86,7 @@ def tool_info(force=False):
 
 
 # ───────────────────────── ссылки ─────────────────────────
+
 
 def parse_time_param(value):
     """«65», «65s», «1m5s», «1h2m3s», «1:05» → секунды."""
@@ -138,12 +142,14 @@ def is_url(text):
 
 NOISE = re.compile(
     r"\s*[\(\[]\s*(?:official|офиц|music\s*video|lyric|lyrics|audio|video|clip|клип|hd|hq|4k|"
-    r"visuali[sz]er|премьера|текст|mv\b|m/v|full\s*version)[^\)\]]*[\)\]]", re.IGNORECASE)
+    r"visuali[sz]er|премьера|текст|mv\b|m/v|full\s*version)[^\)\]]*[\)\]]",
+    re.IGNORECASE,
+)
 
 
 def clean_title(text):
     t = NOISE.sub("", text or "")
-    t = re.split(r"\s+[|│]\s+", t)[0]          # «Песня | Official Video»
+    t = re.split(r"\s+[|│]\s+", t)[0]  # «Песня | Official Video»
     t = re.sub(r"\s+(?:official\s+(?:music\s+)?video|lyrics?|hd|4k)\s*$", "", t, flags=re.IGNORECASE)
     return t.strip(" -–—").strip()
 
@@ -208,8 +214,22 @@ def download_video(url, dest, extra_args=()):
     out = Path(dest) / f"{key}.mp4"
     if out.is_file():
         return out
-    r = subprocess.run(cmd + ["-f", "bv*[height<=1080]+ba/b", "--merge-output-format", "mp4", "--no-playlist",
-                              "-o", str(out), *extra_args, url], capture_output=True, text=True)
+    r = subprocess.run(
+        cmd
+        + [
+            "-f",
+            "bv*[height<=1080]+ba/b",
+            "--merge-output-format",
+            "mp4",
+            "--no-playlist",
+            "-o",
+            str(out),
+            *extra_args,
+            url,
+        ],
+        capture_output=True,
+        text=True,
+    )
     if r.returncode != 0 or not out.is_file():
         raise DownloadError(friendly_error(r.stdout.splitlines() + r.stderr.splitlines(), True))
     return out
@@ -236,14 +256,17 @@ def _result(key, audio, thumb, info_path):
 
 # ───────────────────────── скачивание ─────────────────────────
 
+
 def friendly_error(lines, has_js):
     text = "\n".join(lines)
     errors = [l for l in lines if l.startswith("ERROR")]
     last = re.sub(r"^ERROR:\s*(\[[^\]]+\]\s*[\w-]+:\s*)?", "", errors[-1]) if errors else (lines[-1] if lines else "")
     low = text.lower()
     if "sign in to confirm" in low or "not a bot" in low:
-        return ("YouTube просит подтвердить, что вы не бот. В настройках скачивания добавьте "
-                "«--cookies-from-browser firefox» (или chrome) — yt-dlp возьмёт вход из браузера.")
+        return (
+            "YouTube просит подтвердить, что вы не бот. В настройках скачивания добавьте "
+            "«--cookies-from-browser firefox» (или chrome) — yt-dlp возьмёт вход из браузера."
+        )
     if "private video" in low:
         return "Видео закрыто владельцем."
     if "not available in your country" in low or "geo restrict" in low:
@@ -277,10 +300,19 @@ def download(url, dest, on_progress=None, cancel=None, extra_args=(), has_js=Tru
         return cached
     key, _, _ = parse_url(url)
     args = cmd + [
-        "-f", "bestaudio/best", "--no-playlist", "--newline", "--no-colors",
-        "-o", str(dest / f"{key}.%(ext)s"),
-        "--write-info-json", "--write-thumbnail", "--convert-thumbnails", "jpg",
-        *extra_args, url,
+        "-f",
+        "bestaudio/best",
+        "--no-playlist",
+        "--newline",
+        "--no-colors",
+        "-o",
+        str(dest / f"{key}.%(ext)s"),
+        "--write-info-json",
+        "--write-thumbnail",
+        "--convert-thumbnails",
+        "jpg",
+        *extra_args,
+        url,
     ]
     proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     lines = []

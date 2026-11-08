@@ -37,6 +37,7 @@ for ext, mime in {".ttf": "font/ttf", ".otf": "font/otf", ".webp": "image/webp"}
 
 # ───────────────────────── какие обложки ─────────────────────────
 
+
 def track_cover(ws, track):
     for key in ("cover", "cover_auto", "thumb"):
         path = ws.resolve(track.get(key))
@@ -57,6 +58,7 @@ def quiz_covers(ws, project):
 
 
 # ───────────────────────── цвет и раскладка ─────────────────────────
+
 
 def srgb_to_lab(rgb):
     """rgb: массив (..., 3) в 0..1 → Lab."""
@@ -93,7 +95,7 @@ def rainbow_layout(paths, cols, rows):
     Возвращает пути по строкам."""
     lab = {p: mean_lab(p) for p in paths}
     chroma = {p: math.hypot(lab[p][1], lab[p][2]) for p in paths}
-    chosen = sorted(paths, key=lambda p: -chroma[p])[:cols * rows]
+    chosen = sorted(paths, key=lambda p: -chroma[p])[: cols * rows]
 
     def hue_key(p):
         L, a, b = lab[p]
@@ -102,7 +104,7 @@ def rainbow_layout(paths, cols, rows):
     ordered = sorted(chosen, key=hue_key)
     grid = [None] * (cols * rows)
     for c in range(cols):
-        rest = ordered[c * rows:(c + 1) * rows]
+        rest = ordered[c * rows : (c + 1) * rows]
         chain = [max(rest, key=lambda p: lab[p][0])]
         rest.remove(chain[0])
         while rest:
@@ -115,6 +117,7 @@ def rainbow_layout(paths, cols, rows):
 
 
 # ───────────────────────── сервер страницы ─────────────────────────
+
 
 class App:
     def __init__(self, ws, slug):
@@ -136,8 +139,14 @@ class App:
     def info(self):
         settings = json.loads(self.settings_path.read_text("utf-8")) if self.settings_path.is_file() else {}
         fonts = sorted(p.name for p in self.fonts_dir.glob("*") if p.suffix.lower() in FONT_EXT)
-        return {"slug": self.slug, "layout": self.layout, "covers": len(self.covers),
-                "fonts": fonts, "defaults": self.defaults, "settings": settings}
+        return {
+            "slug": self.slug,
+            "layout": self.layout,
+            "covers": len(self.covers),
+            "fonts": fonts,
+            "defaults": self.defaults,
+            "settings": settings,
+        }
 
 
 class Handler(BaseHTTPRequestHandler):

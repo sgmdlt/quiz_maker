@@ -32,8 +32,10 @@ try:
     import numpy  # noqa: F401
     from PIL import Image  # noqa: F401
 except ImportError as e:
-    sys.exit(f"Не хватает библиотеки ({e.name}). Выполните «uv sync» в папке конструктора "
-             f"и запускайте его так: uv run make_quiz.py serve")
+    sys.exit(
+        f"Не хватает библиотеки ({e.name}). Выполните «uv sync» в папке конструктора "
+        f"и запускайте его так: uv run make_quiz.py serve"
+    )
 
 import quiz_core as q
 
@@ -65,8 +67,9 @@ def say(msg):
 def find_slug(ws, name):
     p = Path(name)
     if (p / "project.json").is_file():
-        return p.name if p.absolute().parent == ws.projects.absolute() else sys.exit(
-            f"Квиз должен лежать в {ws.projects}")
+        return (
+            p.name if p.absolute().parent == ws.projects.absolute() else sys.exit(f"Квиз должен лежать в {ws.projects}")
+        )
     slugs = [x["slug"] for x in ws.list_projects()]
     if name in slugs:
         return name
@@ -108,8 +111,11 @@ def main():
     s.add_argument("project")
     s.add_argument("file", type=Path)
 
-    for name, help_ in (("download", "скачать треки и найти обложки альбомов"), ("covers", "найти обложки альбомов заново"),
-                        ("preview", "кадры всех слайдов и лист ответов")):
+    for name, help_ in (
+        ("download", "скачать треки и найти обложки альбомов"),
+        ("covers", "найти обложки альбомов заново"),
+        ("preview", "кадры всех слайдов и лист ответов"),
+    ):
         s = sub.add_parser(name, help=help_)
         s.add_argument("project")
 
@@ -125,6 +131,7 @@ def main():
 
     if a.cmd == "serve":
         import server
+
         server.serve(ws.root, a.port, not a.no_browser)
         return
 
@@ -135,9 +142,11 @@ def main():
         if a.cmd == "list":
             projects = ws.list_projects()
             if not projects:
-                print("Квизов пока нет. Создайте: uv run make_quiz.py new \"Название\" --links ссылки.txt")
+                print('Квизов пока нет. Создайте: uv run make_quiz.py new "Название" --links ссылки.txt')
             for p in projects:
-                print(f"  {p['slug']:<32} {p['name']}  ({p['tracks']} {q.plural(p['tracks'], 'трек', 'трека', 'треков')})")
+                print(
+                    f"  {p['slug']:<32} {p['name']}  ({p['tracks']} {q.plural(p['tracks'], 'трек', 'трека', 'треков')})"
+                )
 
         elif a.cmd == "new":
             slug = ws.create(a.name)
@@ -171,11 +180,21 @@ def main():
             slug = find_slug(ws, a.project)
             if not a.no_download:
                 project = ws.load(slug)
-                if any(t.get("url") and not (ws.resolve(t.get("file")) and ws.resolve(t["file"]).is_file())
-                       for t in project["tracks"] if t.get("enabled", True)):
+                if any(
+                    t.get("url") and not (ws.resolve(t.get("file")) and ws.resolve(t["file"]).is_file())
+                    for t in project["tracks"]
+                    if t.get("enabled", True)
+                ):
                     q.download_tracks(ws, slug, log=say, progress=progress_bar)
-            r = q.build(ws, slug, limit=a.limit, log=say, progress=progress_bar, round_id=a.round,
-                        narration="silent" if a.no_voice else "voiced")
+            r = q.build(
+                ws,
+                slug,
+                limit=a.limit,
+                log=say,
+                progress=progress_bar,
+                round_id=a.round,
+                narration="silent" if a.no_voice else "voiced",
+            )
             print(f"\n  видео     {ws.resolve(r['video'])}")
             print(f"  обложка   {ws.resolve(r['thumbnail'])}")
             print(f"  описание  {ws.resolve(r['description'])}")
