@@ -1,0 +1,19 @@
+// Git-хуки и быстрые проверки файлов. Полная проверка — `mise run check` (её же запускает CI).
+amends "package://github.com/jdx/hk/releases/download/v2.10.0/hk@2.10.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.10.0/hk@2.10.0#/Builtins.pkl"
+
+// pre-commit: только изменённые файлы, за секунды
+steps {
+  // ruff стоит в окружении uv (pyproject.toml); .venv/bin в PATH кладёт mise.toml
+  ["ruff"] = Builtins.ruff
+  ["ruff_format"] = Builtins.ruff_format
+}
+
+hooks {
+  // pre-push: весь проект — то же, что CI
+  ["pre-push"] {
+    steps {
+      ["check"] { check = "mise run check" }
+    }
+  }
+}
