@@ -17,6 +17,7 @@ class FakeMedia:
     def __init__(self):
         self.slides = []  # (кадров, звук слайда, первый кадр или None, если это поток кадров)
         self.cuts = []
+        self.aborted = False
 
     def cut(self, path, start, samples):
         self.cuts.append((str(path), start, samples))
@@ -44,6 +45,9 @@ class FakeMedia:
 
             def close(self):
                 out.write_bytes(b"")
+
+            def abort(self):
+                media.aborted = True
 
         return Sink()
 
@@ -103,3 +107,18 @@ def test_video_answer_sounds_from_video(tmp_path):
     assert media.cuts[-1][:2] == ("/video.mp4", 5.0)
     k = 2 * SR
     assert media.slides[3][1][k, 0] == np.float32((5 * SR + k) / 1e7)
+
+
+def test_failed_slide_drawing_aborts_encoder(tmp_path, monkeypatch):
+    ws, slug = _quiz(tmp_path, [{"title": "П", "artist": "А", "start": 30.0}])
+    media = FakeMedia()
+
+    def broken(*_):
+        raise RuntimeError("не нарисовалось")
+
+    monkeypatch.setattr(qc.Renderer, "answer_card", broken)
+    try:
+        qc.build(ws, slug, round_id="r1", log=lambda *_: None, media=media)
+    except RuntimeError:
+        pass
+    assert media.aborted
