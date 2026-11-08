@@ -8,6 +8,7 @@ steps {
   ["ruff"] = Builtins.ruff
   ["ruff_format"] = Builtins.ruff_format
   ["typos"] = Builtins.typos  // исключения — в _typos.toml
+  ["betterleaks"] = Builtins.betterleaks  // секреты в изменённых файлах; история — в mise run check
 }
 
 hooks {
