@@ -109,8 +109,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Команды
 
+- **Все проверки: `mise run check`** — её же запускает pre-push и CI (`.github/workflows/check.yml`). Внутри:
+  hk (ruff, ruff format, typos, Betterleaks, ast-grep, jactionlint), Betterleaks по всей истории, deptry,
+  тесты правил ast-grep, pytest. `mise run fix` — безопасные автоисправления, `mise run vulns` — OSV-Scanner
+  по `uv.lock` (нужна сеть). Версии инструментов — в `mise.toml`, Python-инструменты — в `uv.lock`.
+  Хуки ставятся один раз: `mise exec -- hk install --mise`.
 - Тесты: `uv run pytest -q` (`tests/`, нужен ffmpeg, около 35 с). pytest-xdist пробовали: медленнее, каждый тест сам грузит все ядра.
-- Линтер: `uv run ruff check` (правила по умолчанию ruff, четыре отключены в `pyproject.toml`; `--fix` для безопасных правок).
+- Линтер: `uv run ruff check`, форматирование: `uv run ruff format` (строка до 120 символов).
 - git есть (ветка `main`). Всё запускается через `uv run` (иначе не находятся yt-dlp и deno из `.venv`). Из системы нужен ffmpeg/ffprobe.
 
 ```bash
@@ -165,6 +170,10 @@ uv run cover.py <slug> [--port 8790]             # отдельный конст
 
 ## Правила кода
 
+- **Изменение не готово, пока не проходит `mise run check`.**
+- **Правила линтеров не отключаются, чтобы провести изменение.** Исключение — узкое (один путь или пакет и одно
+  правило), с причиной рядом и только по решению человека. Где лежат: `pyproject.toml` (ruff, deptry),
+  `_typos.toml`, `.betterleaks.toml`. Границы модулей из «Архитектуры» проверяют правила ast-grep в `rules/`.
 - **Явные состояния вместо флагов.** Не `True/False` и не `has_x`/`is_x`, а значение с названием состояния:
   `"pending" | "done" | "failed"`, `"quiz_intro" | "social_cover"`. Новое состояние тогда добавляется без второго флага
   и без невозможных сочетаний. Старые флаги (`enabled`, `shuffle`, `cover_backdrop`…) переводятся, когда их трогают.
