@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import quiz_core as q
+import scenario as sc
 import youtube
 from spectrum_ring import config_schema
 
@@ -155,6 +156,7 @@ class App:
                                 "thumbnail": self.ws.rel(thumb) if thumb.exists() else None,
                                 "description_text": desc.read_text(encoding="utf-8") if desc.exists() else ""})
         return {"slug": slug, "project": project, "status": self.track_status(project, slug),
+                "clips": sc.clip_lengths(project),
                 "jobs": self.jobs.for_project(slug), "outputs": outputs,
                 "library": {"font": self.ws.library_files("font"), "image": self.ws.library_files("image"),
                             "music": self.ws.library_files("music")}}
@@ -442,7 +444,7 @@ def get_project(h, slug):
 def patch_project(h, slug):
     data = h.read_json()
     h.ws.patch(slug, data.get("set"), data.get("unset"))
-    h.send_json({"ok": True})
+    h.send_json({"ok": True, "clips": sc.clip_lengths(h.ws.load(slug))})  # время раунда меняет окна на волне
 
 
 @route("POST", "/api/projects/([\\w-]+)/tracks")
@@ -468,7 +470,8 @@ def patch_track(h, slug, tid):
         fields_.update(file="", thumb="", duration=None, error="", cover_auto="", cover_source="")
     project = h.ws.patch_track(slug, tid, fields_, internal="url" in data)
     track = next(t for t in project["tracks"] if t["id"] == tid)
-    h.send_json({"track": track, "status": h.app.track_status(project, slug)[tid]})
+    h.send_json({"track": track, "status": h.app.track_status(project, slug)[tid],
+                 "clips": sc.clip_lengths(h.ws.load(slug))})
 
 
 @route("DELETE", "/api/projects/([\\w-]+)/tracks/([\\w]+)")

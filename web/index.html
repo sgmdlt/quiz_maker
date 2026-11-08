@@ -418,8 +418,13 @@ const S = {
 };
 const P = () => S.d.project;
 const trackById = id => P().tracks.find(t => t.id === id);
-const qSec = t => Number(P().rounds.find(r => r.id === t?.round)?.seconds) || Number(P().timing.question) || 10;
-const fragLen = t => (t?.start2 != null ? qSec(t) / 2 : qSec(t));  // два фрагмента — по половине времени
+// длина одного отрывка считает сервер по правилам сценария ролика (время раунда, два отрывка)
+const fragLen = t => S.d.clips?.[t?.id] ?? 0;
+function updateClips(clips) {
+  if (!clips || JSON.stringify(clips) === JSON.stringify(S.d.clips)) return;
+  S.d.clips = clips;
+  $$("li.track").forEach(li => drawWave(li.dataset.id));
+}
 
 function getPath(obj, path) { return path.split(".").reduce((o, k) => (o == null ? o : o[k]), obj); }
 function setPath(obj, path, v) { const ks = path.split("."); const last = ks.pop(); let o = obj; for (const k of ks) o = o[k] ??= {}; o[last] = v; }
@@ -440,8 +445,8 @@ function saveProject(path, value, { now = false } = {}) {
   const run = async () => {
     saving++; setSaved("busy");
     try {
-      await api("PATCH", `/api/projects/${S.slug}`, { set: { [path]: value } });
-      S.dirty.delete(key); setSaved("ok"); afterChange(path);
+      const r = await api("PATCH", `/api/projects/${S.slug}`, { set: { [path]: value } });
+      S.dirty.delete(key); setSaved("ok"); updateClips(r.clips); afterChange(path);
     } catch (e) { setSaved("err", e.message); fail(e); }
     finally { saving--; }
   };
@@ -450,7 +455,7 @@ function saveProject(path, value, { now = false } = {}) {
 async function unsetProject(path) {
   const ks = path.split("."); const last = ks.pop();
   const parent = getPath(P(), ks.join(".")); if (parent) delete parent[last];
-  try { await api("PATCH", `/api/projects/${S.slug}`, { unset: [path] }); setSaved("ok"); afterChange(path); }
+  try { const r = await api("PATCH", `/api/projects/${S.slug}`, { unset: [path] }); setSaved("ok"); updateClips(r.clips); afterChange(path); }
   catch (e) { fail(e); }
 }
 function afterChange(path) {
@@ -471,6 +476,7 @@ function saveTrack(id, field, value, { now = false } = {}) {
       S.dirty.delete(key);
       Object.assign(trackById(id) || {}, r.track);
       S.d.status[id] = r.status;
+      updateClips(r.clips);
       setSaved("ok");
       if (["title", "artist", "album", "year", "hint", "question", "answer", "answer_video", "video_source", "cover", "start", "enabled"].includes(field) && S.pv.track === id) schedulePreview();
       if (field === "enabled") { updateCount(); if (S.tab === "build") renderBuild(); }
