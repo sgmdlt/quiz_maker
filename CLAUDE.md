@@ -109,7 +109,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Команды
 
-Тесты: `uv run pytest -q` (`tests/`, нужен ffmpeg). Линтера нет, git есть (ветка `main`). Всё запускается через `uv run` (иначе не находятся
+Тесты: `uv run pytest -q` (`tests/`, нужен ffmpeg); параллельно: `uv run pytest -q -n auto` (pytest-xdist; на малом числе тестов выигрыша может не быть, каждый тест сам грузит все ядра). Линтер: `uv run ruff check` (правила по умолчанию, `--fix` для безопасных правок). git есть (ветка `main`). Всё запускается через `uv run` (иначе не находятся
 yt-dlp и deno из `.venv`). Из системы нужен ffmpeg/ffprobe.
 
 ```bash

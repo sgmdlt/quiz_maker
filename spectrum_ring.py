@@ -252,7 +252,7 @@ class SpectrumRing:
         self.visual_radius = self.r_in + self.max_len  # внешний край столбиков
 
         outer = self.visual_radius + self.glow_r * 3 + 6
-        self.size = int(math.ceil(outer / 4)) * 8  # кратно 8 — для уменьшения без остатка
+        self.size = math.ceil(outer / 4) * 8  # кратно 8 — для уменьшения без остатка
         self.c = self.size / 2
 
         self.rel = (np.arange(self.n_bars) + 0.5) * 360.0 / self.n_bars  # углы от начала дуги
@@ -283,8 +283,8 @@ class SpectrumRing:
         return Image.fromarray(img.astype(np.uint8), "RGB")
 
     def box(self, center):
-        x0 = int(round(center[0] - self.size / 2))
-        y0 = int(round(center[1] - self.size / 2))
+        x0 = round(center[0] - self.size / 2)
+        y0 = round(center[1] - self.size / 2)
         return x0, y0, x0 + self.size, y0 + self.size
 
     def paint_static(self, img, center):

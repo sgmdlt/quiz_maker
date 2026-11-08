@@ -37,7 +37,6 @@ except ImportError as e:
 
 import quiz_core as q
 
-
 _bar = {"shown": False, "last": None}
 
 
