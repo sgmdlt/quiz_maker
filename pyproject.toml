@@ -8,9 +8,9 @@ dependencies = [
     "pillow>=10.2",
     "numpy>=1.26",
     # yt-dlp с компонентом EJS: нужен для YouTube вместе с JavaScript-движком
-    "yt-dlp[default]>=2025.11.12",
+    "yt-dlp[default]>=2026.10.26",
     # JavaScript-движок для yt-dlp; ставится из PyPI, отдельная установка не нужна
-    "deno>=2.0",
+    "deno>=2.9.8",
     "piper-tts>=1.8.0",
     "edge-tts>=7.3.1",
 ]
