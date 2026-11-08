@@ -1,0 +1,22 @@
+# Обновления зависимостей раз в месяц, одним pull request'ом на экосистему.
+# cooldown: свежевыпущенные версии ждут неделю — меньше риск поймать скомпрометированный релиз.
+version: 2
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      python:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

@@ -7,6 +7,8 @@ typos = "1.51.1"
 betterleaks = "1.9.0"
 ast-grep = "0.51.0"
 osv-scanner = "2.7.0"
+jactionlint = "2.4.0"
+shellcheck = "0.11.0"  # jactionlint проверяет им шаги run:
 
 [env]
 # инструменты из uv.lock (ruff, pytest…) видны hk и задачам
