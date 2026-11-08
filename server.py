@@ -95,7 +95,7 @@ class Jobs:
             job.stage = "Остановлено"
         except q.QuizError as e:
             job.state, job.error = "error", str(e)
-        except Exception as e:  # неожиданная ошибка — показываем и пишем подробности в журнал
+        except Exception as e:  # неожиданная ошибка — показываем и пишем подробности в журнал  # noqa: BLE001
             job.state, job.error = "error", f"{type(e).__name__}: {e}"
             job.log.append(traceback.format_exc())
         finally:
@@ -275,7 +275,7 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send_error_json(400, str(e))
                     except (BrokenPipeError, ConnectionResetError):
                         return
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001
                         traceback.print_exc()
                         return self.send_error_json(500, f"{type(e).__name__}: {e}")
         self.send_error_json(404, "Нет такой страницы")
