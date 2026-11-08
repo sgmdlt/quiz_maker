@@ -76,3 +76,9 @@ def test_social_cover_opens_quiz_and_round_trial_skips_shared_slides():
     assert _slides(p, tracks, opening="social_cover")[0].kind == "social_cover"
     kinds = [s.kind for s in _slides(p, tracks, scope="round_trial")]
     assert kinds == ["round_intro", "question", "answers_intro", "answer"]
+
+
+def test_clip_lengths_match_scenario_clips():
+    p = _quiz([{"id": "r1", "title": "Хиты", "seconds": 10}, {"id": "r2", "title": "Блиц", "seconds": 6}])
+    p["tracks"] = [_track("a", round="r1"), _track("b", round="r1", start2=60.0), _track("c", round="r2")]
+    assert sc.clip_lengths(p) == {"a": 10.0, "b": 5.0, "c": 6.0}

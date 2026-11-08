@@ -268,6 +268,17 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
     return slides
 
 
+def clip_lengths(project):
+    """Длина одного отрывка каждого трека в секундах — окно на волне в конструкторе.
+    Те же кадры, что в сценарии: при двух отрывках каждый звучит половину времени вопроса."""
+    rounds = {r["id"]: r for r in project["rounds"]}
+    out = {}
+    for t in project["tracks"]:
+        q_frames = frames_for(question_seconds(project, rounds[t["round"]]))
+        out[t["id"]] = (q_frames if t["start2"] is None else q_frames // 2) / FPS
+    return out
+
+
 def chapters(slides):
     """Главы для описания YouTube: [(секунда начала, название)], первая — с 0:00."""
     out, t = [], 0.0
