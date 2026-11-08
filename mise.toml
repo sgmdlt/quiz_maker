@@ -6,6 +6,7 @@ hk = "2.10.0"
 typos = "1.51.1"
 betterleaks = "1.9.0"
 ast-grep = "0.51.0"
+osv-scanner = "2.7.0"
 
 [env]
 # инструменты из uv.lock (ruff, pytest…) видны hk и задачам
@@ -20,6 +21,10 @@ run = [
   "ast-grep test --skip-snapshot-tests",  # сами правила ast-grep проверены своими тестами
   "uv run pytest -q",
 ]
+
+[tasks.vulns]
+description = "Известные уязвимости в uv.lock (нужна сеть; CI запускает и по расписанию)"
+run = "osv-scanner scan source --lockfile uv.lock"
 
 [tasks.fix]
 description = "Безопасные автоисправления (ruff lint --fix и ruff format)"
