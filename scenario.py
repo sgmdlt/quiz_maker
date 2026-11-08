@@ -80,16 +80,20 @@ def gap_seconds(project, rnd):
     return float(rnd["gap"] if rnd.get("gap") is not None else project["timing"]["gap"])
 
 
+def is_three_tries(rnd):
+    return rnd.get("kind") == "three_tries"
+
+
 def answer_groups(rnd, items):
     """Что раскрывает один слайд ответа: в «Трёх попытках» — тройка вопросов, иначе один."""
-    k = 3 if rnd.get("kind") == "three_tries" else 1
+    k = 3 if is_three_tries(rnd) else 1
     return [items[i:i + k] for i in range(0, len(items), k)]
 
 
 def question_labels(rnd, items):
     """Номер каждого вопроса: 1, 2… или в «Трёх попытках» 1.1, 1.2, 1.3, 2.1…"""
     groups = answer_groups(rnd, items)
-    if rnd.get("kind") != "three_tries":
+    if not is_three_tries(rnd):
         return [str(g) for g in range(1, len(groups) + 1)]
     return [f"{g}.{j}" for g, grp in enumerate(groups, 1) for j in range(1, len(grp) + 1)]
 
@@ -98,7 +102,7 @@ def round_title(rnd, n):
     return rnd["title"] or f"Раунд {n}"
 
 
-def rounds_card(project):
+def round_titles(project):
     """Названия раундов для слайда списка раундов (без номеров)."""
     return [r["title"].strip() for r in project["rounds"]]
 
@@ -156,7 +160,7 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
             slide, chapter[0] = replace(slide, chapter=chapter[0]), ""
         slides.append(slide)
 
-    def card(key, kind, card_texts, shown, narration="", music=""):
+    def intro_slide(key, kind, slide_texts, shown, narration="", music=""):
         """Слайд заставки. Пустой заголовок (shown) или нулевая длительность — слайда нет.
         Слайд держится, пока диктор не дочитает."""
         if timing[key] <= 0 or not shown:
@@ -165,7 +169,7 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
         if narration.strip() and project["voice"]:
             sound = (Silence(round(NARRATION_LEAD * SAMPLE_RATE)), Narration(narration))
             frames = max(frames, frames_for(NARRATION_LEAD + narration_seconds(narration) + 1))
-        add(Slide(kind, frames, card_texts, sound=sound, music=music))
+        add(Slide(kind, frames, slide_texts, sound=sound, music=music))
 
     def track_sound(track, q_frames, a_frames):
         """(звук вопроса, звук ответа) из отрывков трека."""
@@ -195,16 +199,16 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
         intro = {"title": fmt(texts["intro_title"], **vals), "subtitle": fmt(texts["intro_subtitle"], **vals)}
         greeting = fmt(texts["intro_narration"], **vals) or "\n".join((intro["title"], intro["subtitle"]))
         if opening == "social_cover":
-            card("cover", "social_cover", {}, "social_cover", greeting, project["intro_music"])
+            intro_slide("cover", "social_cover", {}, "social_cover", greeting, project["intro_music"])
         else:
-            card("intro", "quiz_intro", intro, intro["title"], greeting, project["intro_music"])
-        titles = rounds_card(project)
+            intro_slide("intro", "quiz_intro", intro, intro["title"], greeting, project["intro_music"])
+        titles = round_titles(project)
         joined = "\n".join(titles)
-        card("rounds", "rounds_list", {"titles": titles}, joined,
+        intro_slide("rounds", "rounds_list", {"titles": titles}, joined,
              fmt(texts["rounds_narration"], **vals) or joined, project["intro_music"])
 
     for k, (rnd, tracks) in enumerate(rounds, start=1):
-        three_tries = rnd.get("kind") == "three_tries"
+        three_tries = is_three_tries(rnd)
         q_base, a_frames = frames_for(question_seconds(project, rnd)), frames_for(answer_seconds(project, rnd))
         gap = round(gap_seconds(project, rnd) * FPS)
         rv = text_values(len(tracks), question_seconds(project, rnd), round=rnd["title"],
@@ -231,7 +235,7 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
         chapter[0] = round_title(rnd, k)
         subtitle, rules = fmt(rnd.get("subtitle") or "", **rv), fmt(rnd["rules"], **rv)
         narration = fmt(rnd.get("narration") or "", **rv) or "\n".join(p for p in (rnd["title"], subtitle, rules) if p)
-        card("round", "round_intro", {"title": rnd["title"], "subtitle": subtitle, "rules": rules}, rnd["title"],
+        intro_slide("round", "round_intro", {"title": rnd["title"], "subtitle": subtitle, "rules": rules}, rnd["title"],
              narration, rnd.get("music", ""))
 
         if three_tries:  # после каждой тройки вопросов — слайд ответа, песни под свои отрывки
@@ -246,7 +250,7 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
         answer_sounds = [question(label, track) for (label, track), in groups]
         answers = {"title": fmt(texts["answers_title"], **rv), "subtitle": fmt(texts["answers_subtitle"], **rv)}
         chapter[0] = answers["title"] or f"Ответы · {round_title(rnd, k)}"
-        card("answers_card", "answers_intro", answers, answers["title"],
+        intro_slide("answers_card", "answers_intro", answers, answers["title"],
              fmt(texts["answers_narration"], **rv), rnd.get("music", ""))
         for ((label, track),), a_sound in zip(groups, answer_sounds):
             if track["answer_video"]:
@@ -257,7 +261,7 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
 
     if scope == "whole_quiz":
         outro = {"title": fmt(texts["outro_title"], **vals), "subtitle": fmt(texts["outro_subtitle"], **vals)}
-        card("outro", "outro", outro, outro["title"], fmt(texts["outro_narration"], **vals), project["outro_music"])
+        intro_slide("outro", "outro", outro, outro["title"], fmt(texts["outro_narration"], **vals), project["outro_music"])
     return slides
 
 

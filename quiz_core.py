@@ -48,12 +48,13 @@ from scenario import (
     fmt,
     frames_for,
     gap_seconds,
+    is_three_tries,
     plural,
     question_labels,
     question_seconds,
     round_side,
     round_title,
-    rounds_card,
+    round_titles,
     text_values,
 )
 from spectrum_ring import RingConfig, SpectrumRing, analyze, config_from_dict
@@ -1548,7 +1549,7 @@ def preview(ws, slug, track_id=None, log=print):
     out_dir.mkdir(parents=True, exist_ok=True)
     round_vals = text_values(len(in_round) or 1, question_seconds(project, rnd), round=rnd["title"],
                              round_n=project["rounds"].index(rnd) + 1)
-    if rnd["kind"] == "three_tries":  # всего — исполнителей
+    if is_three_tries(rnd):  # всего — исполнителей
         round_vals["total"] = len(answer_groups(rnd, in_round)) or 1
     label_vals = dict(round_vals, n=index)
     group_vals = dict(round_vals, n=pos // 3 + 1)
@@ -1562,13 +1563,13 @@ def preview(ws, slug, track_id=None, log=print):
     images = {
         "intro": (ImageOps.fit(Image.open(cover_file).convert("RGB"), (r.W, r.H)) if cover_file.is_file() else
                   r.title_card(fmt(texts["intro_title"], **vals), fmt(texts["intro_subtitle"], **vals), 8)),
-        "rounds": r.rounds_list(rounds_card(project)),
+        "rounds": r.rounds_list(round_titles(project)),
         "round": r.round_card(rnd["title"], fmt(rnd.get("subtitle") or "", **round_vals), fmt(rnd["rules"], **round_vals)),
         "reveal": r.question_frame(base, levels, reveal_i, q_frames, pre_frames=pre),
         "question": r.question_frame(base, levels, pre + int(q_frames * 0.55), q_frames, pre_frames=pre),
         "answers": r.title_card(fmt(texts["answers_title"], **round_vals), fmt(texts["answers_subtitle"], **round_vals)),
         "answer": (group_preview(ws, project, r, fmt(texts["answer_label"], **group_vals), rnd, in_round, pos,
-                                 round_side(texts, group_vals)) if rnd["kind"] == "three_tries" else
+                                 round_side(texts, group_vals)) if is_three_tries(rnd) else
                    answer_preview(ws, r, fmt(texts["answer_label"], **label_vals), row, round_side(texts, label_vals))),
         "outro": r.title_card(fmt(texts["outro_title"], **vals), fmt(texts["outro_subtitle"], **vals)),
     }
@@ -1880,7 +1881,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     for k, (rnd, rs) in enumerate(rounds, start=1):
         if len(rounds) > 1:
             desc_lines.append(round_title(rnd, k))
-        if rnd["kind"] == "three_tries":
+        if is_three_tries(rnd):
             desc_lines += [f"{g}. {group_answer(grp)} — {', '.join(r['title'] for r in grp)}"
                            for g, grp in enumerate(answer_groups(rnd, rs), start=1)]
         else:

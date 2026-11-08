@@ -11,9 +11,9 @@ def _tone(path, freq):
                     "-ac", "2", "-ar", str(qc.SAMPLE_RATE), str(path)], check=True)
 
 
-def test_rounds_card_titles_without_numbers():
+def test_round_titles_without_numbers():
     project = {"rounds": [{"title": " Разминка"}, {"title": "OST"}, {"title": "Блиц"}]}
-    assert qc.rounds_card(project) == ["Разминка", "OST", "Блиц"]
+    assert qc.round_titles(project) == ["Разминка", "OST", "Блиц"]
 
 
 def test_title_card_uses_logo_file(tmp_path):
