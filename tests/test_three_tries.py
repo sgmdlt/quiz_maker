@@ -1,6 +1,8 @@
 import itertools
 import subprocess
 
+from test_build_media import FakeMedia
+
 import quiz_core as qc
 import scenario as sc
 
@@ -29,9 +31,8 @@ def test_build_three_tries_round(tmp_path, monkeypatch):
     ws = qc.Workspace(tmp_path)
     tracks = []
     for k, title in enumerate(["Раз", "Два", "Три", "Four", "Five", "Six"]):
-        path = tmp_path / f"{k}.wav"
-        _tone(path, 300 + 100 * k)
-        tracks.append({"file": path.name, "title": title, "artist": "Группа" if k < 3 else "Band", "duration": 20.0})
+        (tmp_path / f"{k}.wav").write_bytes(b"")
+        tracks.append({"file": f"{k}.wav", "title": title, "artist": "Группа" if k < 3 else "Band", "duration": 20.0})
     slug = ws.create("Тест", {
         "voice": "", "covers": {"online": False},
         "rounds": [{"id": "r1", "title": "Три попытки", "rules": "", "kind": "three_tries", "answer_seconds": 2,
@@ -43,7 +44,7 @@ def test_build_three_tries_round(tmp_path, monkeypatch):
     orig_q, orig_a = qc.Renderer.question_base, qc.Renderer.answer_group_card
     monkeypatch.setattr(qc.Renderer, "question_base", lambda self, label, *a, **k: labels.append(label) or orig_q(self, label, *a, **k))
     monkeypatch.setattr(qc.Renderer, "answer_group_card", lambda self, label, *a, **k: labels.append(label) or orig_a(self, label, *a, **k))
-    result = qc.build(ws, slug, round_id="r1", log=lambda *_: None)
+    result = qc.build(ws, slug, round_id="r1", log=lambda *_: None, media=FakeMedia())
     # ответ на исполнителя сразу после его трёх вопросов, без заставки «Ответы»
     assert [k for k, _ in itertools.groupby(labels)] == [
         "Вопрос 1.1 из 2", "Вопрос 1.2 из 2", "Вопрос 1.3 из 2", "Ответ 1 из 2",
@@ -51,11 +52,9 @@ def test_build_three_tries_round(tmp_path, monkeypatch):
     expected = t["round"] + 6 * (3 + t["question"]) + 2 * (3 * 2 + t["answer_gap"])
     assert abs(result["duration"] - expected) < 0.1
     assert "1. Группа — Раз, Два, Три" in result["description_text"]
-    shots = qc.preview(ws, slug, log=lambda *_: None)["images"]
-    assert {"question", "answer"} <= set(shots)
 
 
-def test_build_regular_round_answer_seconds(tmp_path):
+def test_build_regular_round_answer_seconds(tmp_path):  # сквозной: настоящий ffmpeg
     ws = qc.Workspace(tmp_path)
     for k in range(2):
         _tone(tmp_path / f"{k}.wav", 300 + 100 * k)

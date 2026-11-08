@@ -1,15 +1,9 @@
-import subprocess
-
 import numpy as np
 from PIL import Image
+from test_build_media import FakeMedia
 
 import quiz_core as qc
 import scenario as sc
-
-
-def _tone(path, freq):
-    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"sine=frequency={freq}:duration=20",
-                    "-ac", "2", "-ar", str(qc.SAMPLE_RATE), str(path)], check=True)
 
 
 def test_round_titles_without_numbers():
@@ -31,7 +25,7 @@ def test_title_card_uses_logo_file(tmp_path):
 
 def test_build_starts_with_cover(tmp_path):
     ws = qc.Workspace(tmp_path)
-    _tone(tmp_path / "0.wav", 440)
+    (tmp_path / "0.wav").write_bytes(b"")
     slug = ws.create("Обложка", {
         "voice": "", "covers": {"online": False},
         "rounds": [{"id": "r1", "title": "Тур", "rules": ""}],
@@ -39,12 +33,11 @@ def test_build_starts_with_cover(tmp_path):
     })
     Image.new("RGB", (1920, 1080), (255, 0, 0)).save(ws.project_dir(slug) / "cover.png")
     t = ws.load(slug)["timing"]
-    result = qc.build(ws, slug, log=lambda *_: None)
+    media = FakeMedia()
+    result = qc.build(ws, slug, log=lambda *_: None, media=media)
     # обложка заменяет заставку квиза
     expected = (t["cover"] + t["rounds"] + t["round"] + t["gap"] + t["question"]
                 + t["answers_card"] + t["answer"] + t["answer_gap"] + t["outro"])
     assert abs(result["duration"] - expected) < 0.1
-    frame = subprocess.run(["ffmpeg", "-v", "error", "-i", str(ws.resolve(result["video"])), "-frames:v", "1",
-                            "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
-    r, g, b = np.frombuffer(frame, np.uint8).reshape(-1, 3).mean(0)
+    r, g, b = np.asarray(media.slides[0][2]).reshape(-1, 3).mean(0)
     assert r > 200 and g < 40 and b < 40  # первый кадр — обложка

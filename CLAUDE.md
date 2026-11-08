@@ -109,7 +109,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Команды
 
-- Тесты: `uv run pytest -q` (`tests/`, нужен ffmpeg, около 85 с). pytest-xdist пробовали: медленнее, каждый тест сам грузит все ядра.
+- Тесты: `uv run pytest -q` (`tests/`, нужен ffmpeg, около 35 с). pytest-xdist пробовали: медленнее, каждый тест сам грузит все ядра.
 - Линтер: `uv run ruff check` (правила по умолчанию ruff, четыре отключены в `pyproject.toml`; `--fix` для безопасных правок).
 - git есть (ветка `main`). Всё запускается через `uv run` (иначе не находятся yt-dlp и deno из `.venv`). Из системы нужен ffmpeg/ffprobe.
 
@@ -144,6 +144,9 @@ uv run cover.py <slug> [--port 8790]             # отдельный конст
   (`question_seconds`, `answer_groups`, `question_labels`…). Не читает файлы и не зовёт ffmpeg; длительность озвучки
   приходит функцией. `build` по сценарию нарезает звук, рисует слайды (`render_slide`) и считает главы (`chapters`).
   Предпросмотр берёт слайды из того же сценария (`preview_slides`): слайда, которого не будет в ролике, в нём нет.
+  Побочные эффекты сборки собраны в `Media` (нарезка, диктор, музыка, видео ответа, кодировщик `FfmpegEncoder`):
+  `build(..., media=...)`. Тесты подставляют `FakeMedia` из `tests/test_build_media.py` — звук слайдов и первый кадр
+  проверяются без ffmpeg; через настоящий ffmpeg идёт один сквозной тест (`test_build_regular_round_answer_seconds`).
   Остальная логика лежит в `quiz_core.py`: `Workspace` (пути, блокировки проекта, чтение и запись
   `project.json`), `parse_track_list`, `Renderer` (слайды на Pillow), `preview`, `answers_sheet`,
   `download_tracks`, `find_covers`, `build` + `VideoWriter` (pipe в ffmpeg).

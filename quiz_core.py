@@ -1695,10 +1695,85 @@ def render_slide(renderer, slide, audio, social_cover, videos):
     return renderer.answer_card(t["label"], row, side)
 
 
-def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=None, narration="voiced"):
+class Media:
+    """Побочные эффекты сборки: нарезка звука, диктор, фоновая музыка, видео ответа и кодирование ролика.
+    В тестах вместо него подставляется заглушка с теми же методами."""
+
+    def __init__(self, ws, project):
+        self.ws, self.voice = ws, project["voice"]
+
+    def cut(self, path, start, samples):
+        return extract_fragment(path, start, samples)
+
+    def speech(self, text):
+        return speech(self.ws, self.voice, text)
+
+    def music(self, source, samples):
+        return music_audio(self.ws, source, samples)
+
+    def video(self, url):
+        """(файл, начало) видео ответа; скачивается при первом обращении."""
+        import youtube
+
+        return answer_video_file(self.ws, url), youtube.parse_url(url)[1] or 0
+
+    def encoder(self, out, width, height, chunks, cancel=None, on_frame=None):
+        return FfmpegEncoder(out, width, height, chunks, cancel, on_frame)
+
+
+class FfmpegEncoder:
+    """Звук слайдов в WAV, кадры — сразу в ffmpeg (x264). Готовый файл появляется только после close()."""
+
+    def __init__(self, out, width, height, chunks, cancel=None, on_frame=None):
+        self.out, self.partial = out, out.with_suffix(".part.mp4")
+        self.tmp = tempfile.TemporaryDirectory(prefix="quiz_")
+        audio_path = Path(self.tmp.name) / "audio.wav"
+        with wave.open(str(audio_path), "wb") as w:
+            w.setnchannels(2)
+            w.setsampwidth(2)
+            w.setframerate(SAMPLE_RATE)
+            for chunk in chunks:
+                w.writeframes((np.clip(chunk, -1, 1) * 32767).astype("<i2").tobytes())
+        cmd = ["ffmpeg", "-v", "error", "-y",
+               "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{width}x{height}", "-r", str(FPS), "-i", "-",
+               "-i", str(audio_path), "-map", "0:v", "-map", "1:a",
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+               "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(self.partial)]
+        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.writer = VideoWriter(self.proc, cancel, on_frame)
+
+    def segment(self, frames, n):
+        try:
+            self.writer.segment(frames, n)
+        except BaseException:
+            self.abort()
+            raise
+
+    def close(self):
+        try:
+            self.proc.stdin.close()
+            err = self.proc.stderr.read().decode(errors="replace")
+            if self.proc.wait() != 0:
+                raise QuizError(f"ffmpeg завершился с ошибкой:\n{err.strip()}")
+            os.replace(self.partial, self.out)
+        except BaseException:
+            self.abort()
+            raise
+        finally:
+            self.tmp.cleanup()
+
+    def abort(self):
+        self.proc.kill()
+        self.proc.wait()
+        self.partial.unlink(missing_ok=True)
+        self.tmp.cleanup()
+
+
+def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=None, narration="voiced", media=None):
     """Собирает видео. Возвращает пути к видео, обложке ролика и описанию.
     round_id (id или название раунда) — пробный ролик только из этого раунда, без общей заставки и финала.
-    narration — "voiced" | "silent" (без озвучки заставок, например, когда сервис голоса недоступен)."""
+    narration — "voiced" | "silent" (без озвучки заставок, например, когда сервис голоса недоступен).
+    media — побочные эффекты сборки (Media); в тестах — заглушка."""
     started = time.time()
     progress = progress or (lambda frac, stage: None)
     project = ws.load(slug)
@@ -1724,6 +1799,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         rounds = [(rnd, rs[:int(limit)]) for rnd, rs in rounds]
     rows = [row for _, rs in rounds for row in rs]
     renderer = make_renderer(ws, project)
+    media = media or Media(ws, project)
     n = len(rows)
 
     out_dir = ws.project_dir(slug) / "output"
@@ -1750,7 +1826,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
 
     def narration_audio(text):
         if text not in speeches:
-            speeches[text] = speech(ws, project["voice"], text)
+            speeches[text] = media.speech(text)
         return speeches[text]
 
     opening = "social_cover" if cover_file.is_file() and timing["cover"] > 0 else "quiz_intro"
@@ -1765,17 +1841,15 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     windows = list(dict.fromkeys((c.path, c.start, c.window) for s in slides for c in s.sound
                                  if isinstance(c, sc.Clip)))
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
-        cut = dict(zip(windows, pool.map(lambda w: extract_fragment(*w), windows)))
+        cut = dict(zip(windows, pool.map(lambda w: media.cut(*w), windows)))
     if cancel is not None and cancel.is_set():
         raise Cancelled()
-
-    import youtube
 
     videos = {}  # ссылка → (файл, начало)
     for url in dict.fromkeys(s.tracks[0]["answer_video"] for s in slides if s.kind == "answer"):
         if url:
             log(f"Скачиваю видео для ответа: {url}")
-            videos[url] = (answer_video_file(ws, url), youtube.parse_url(url)[1] or 0)
+            videos[url] = media.video(url)
 
     def part_audio(part):
         if isinstance(part, sc.Clip):
@@ -1785,7 +1859,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
             return np.zeros((part.samples, 2), dtype=np.float32)
         if isinstance(part, sc.Narration):
             return narration_audio(part.text)
-        return with_fades(extract_fragment(*videos[part.url], part.samples), part.fade_in, part.fade_out)
+        return with_fades(media.cut(*videos[part.url], part.samples), part.fade_in, part.fade_out)
 
     audios = [np.concatenate([part_audio(p) for p in s.sound]) if s.sound else None for s in slides]
     # фоновая музыка: подряд идущие слайды с одной музыкой звучат без перерыва
@@ -1794,7 +1868,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
             continue
         ks = list(group)
         lens = [slides[k].frames * SAMPLES_PER_FRAME for k in ks]
-        bed = with_fades(music_audio(ws, music, sum(lens)), 0.5, 1.5) * float(project["music_volume"])
+        bed = with_fades(media.music(music, sum(lens)), 0.5, 1.5) * float(project["music_volume"])
         for k, part in zip(ks, np.split(bed, np.cumsum(lens)[:-1])):
             if audios[k] is not None:
                 part[:len(audios[k])] += audios[k][:len(part)]
@@ -1804,54 +1878,30 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         f"{renderer.W}x{renderer.H}")
 
     social_cover = Image.open(cover_file).convert("RGB") if opening == "social_cover" else None
-    with tempfile.TemporaryDirectory(prefix="quiz_") as tmp:
-        # 4. Звуковая дорожка, точно по кадрам
-        audio_path = Path(tmp) / "audio.wav"
-        with wave.open(str(audio_path), "wb") as w:
-            w.setnchannels(2)
-            w.setsampwidth(2)
-            w.setframerate(SAMPLE_RATE)
-            for slide, audio in zip(slides, audios):
-                n_s = slide.frames * SAMPLES_PER_FRAME
-                chunk = np.zeros((n_s, 2), dtype=np.float32)
-                if audio is not None:
-                    chunk[:min(n_s, len(audio))] = audio[:n_s]
-                w.writeframes((np.clip(chunk, -1, 1) * 32767).astype("<i2").tobytes())
+    # 4. Звук точно по кадрам, кадры — в кодировщик
+    chunks = []
+    for slide, audio in zip(slides, audios):
+        chunk = np.zeros((slide.frames * SAMPLES_PER_FRAME, 2), dtype=np.float32)
+        if audio is not None:
+            chunk[:min(len(chunk), len(audio))] = audio[:len(chunk)]
+        chunks.append(chunk)
+    del audios  # дальше нужен только звук, выровненный по кадрам
+    written = [0]
+    render_start = time.time()
 
-        # 5. Видео: кадры сразу уходят в ffmpeg
-        partial = out.with_suffix(".part.mp4")
-        cmd = ["ffmpeg", "-v", "error", "-y",
-               "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{renderer.W}x{renderer.H}", "-r", str(FPS), "-i", "-",
-               "-i", str(audio_path), "-map", "0:v", "-map", "1:a",
-               "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-               "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(partial)]
-        proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-        written = [0]
-        render_start = time.time()
+    def on_frame():
+        written[0] += 1
+        if written[0] % 15 == 0:
+            frac = written[0] / total_frames
+            elapsed = time.time() - render_start
+            eta = elapsed / frac * (1 - frac) if frac > 0.02 else None
+            stage = "Собираю видео" + (f", осталось ~{fmt_ts(eta)}" if eta else "")
+            progress(0.05 + 0.93 * frac, stage)
 
-        def on_frame():
-            written[0] += 1
-            if written[0] % 15 == 0:
-                frac = written[0] / total_frames
-                elapsed = time.time() - render_start
-                eta = elapsed / frac * (1 - frac) if frac > 0.02 else None
-                stage = "Собираю видео" + (f", осталось ~{fmt_ts(eta)}" if eta else "")
-                progress(0.05 + 0.93 * frac, stage)
-
-        writer = VideoWriter(proc, cancel, on_frame)
-        try:
-            for slide, audio in zip(slides, audios):
-                writer.segment(render_slide(renderer, slide, audio, social_cover, videos), slide.frames)
-            proc.stdin.close()
-            err = proc.stderr.read().decode(errors="replace")
-            if proc.wait() != 0:
-                raise QuizError(f"ffmpeg завершился с ошибкой:\n{err.strip()}")
-        except BaseException:
-            proc.kill()
-            proc.wait()
-            partial.unlink(missing_ok=True)
-            raise
-        os.replace(partial, out)
+    sink = media.encoder(out, renderer.W, renderer.H, chunks, cancel, on_frame)
+    for slide, chunk in zip(slides, chunks):
+        sink.segment(render_slide(renderer, slide, chunk, social_cover, videos), slide.frames)
+    sink.close()
 
     # 6. Значок YouTube и текст описания с таймкодами
     progress(0.99, "Готовлю значок и описание")
