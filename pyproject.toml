@@ -23,9 +23,12 @@ package = false
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
-    "pytest-xdist>=3.8.0",
     "ruff>=0.17.4",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.ruff.lint]
+# намеренно: широкие except там, где сбой внешнего инструмента не должен ронять работу; check=False — это и так значение по умолчанию
+ignore = ["BLE001", "S110", "S112", "PLW1510"]

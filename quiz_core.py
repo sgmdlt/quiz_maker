@@ -578,7 +578,7 @@ class Workspace:
 def local_meta(path):
     """Название, исполнитель, альбом, год и длительность из тегов файла (или из имени «Исполнитель - Песня»)."""
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration:format_tags:stream_tags",
-                        "-of", "json", str(path)], check=False, capture_output=True, text=True)
+                        "-of", "json", str(path)], capture_output=True, text=True)
     try:
         data = json.loads(r.stdout or "{}")
     except json.JSONDecodeError:
@@ -740,7 +740,7 @@ def load_font(path, style, size):
     if style:
         try:
             font.set_variation_by_name(style)
-        except Exception:  # noqa: BLE001, S110
+        except Exception:
             pass
     return font
 
@@ -750,7 +750,7 @@ def font_styles(path):
     try:
         names = ImageFont.truetype(str(path), 20).get_variation_names()
         return [n.decode() if isinstance(n, bytes) else str(n) for n in names]
-    except Exception:  # noqa: BLE001
+    except Exception:
         return []
 
 
@@ -767,7 +767,7 @@ def default_font():
 def _safe_variations(path):
     try:
         return ImageFont.truetype(path, 20).get_variation_names()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return []
 
 
@@ -1082,7 +1082,7 @@ class Renderer:
         if row.get("cover_file"):
             try:
                 cover = Image.open(row["cover_file"]).convert("RGB")
-            except Exception:  # noqa: BLE001
+            except Exception:
                 cover = None
         img = self._backdrop(cover) if cover is not None and self.style.get("cover_backdrop") else self.bg.copy()
         header_bottom = self._header(img, label, "answer_muted", side)
@@ -1136,7 +1136,7 @@ class Renderer:
             if row.get("cover_file"):
                 try:
                     cover = Image.open(row["cover_file"]).convert("RGB")
-                except Exception:  # noqa: BLE001
+                except Exception:
                     cover = None
             release = " · ".join(p for p in (row.get("album", ""), str(row.get("year", ""))) if p)
             if horizontal:
@@ -1236,7 +1236,7 @@ def make_renderer(ws, project, size=None):
 def probe_duration(path):
     r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
                         "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
-                       check=False, capture_output=True, text=True)
+                       capture_output=True, text=True)
     if r.returncode != 0:
         return False, None
     try:
@@ -1252,13 +1252,13 @@ def extract_fragment(src, start, n_samples):
     трек останется чуть тише, зато не сплющится."""
     dur = n_samples / SAMPLE_RATE
     cut = ["ffmpeg", "-hide_banner", "-ss", f"{start:.3f}", "-t", f"{dur + 1:.3f}", "-i", str(src), "-vn"]
-    r = subprocess.run(cut + ["-af", "loudnorm=print_format=json", "-f", "null", "-"], check=False, capture_output=True)
+    r = subprocess.run(cut + ["-af", "loudnorm=print_format=json", "-f", "null", "-"], capture_output=True)
     m = json.loads("{" + r.stderr.decode(errors="replace").rsplit("{", 1)[-1])  # замер loudnorm — JSON в конце
     gain = min(LOUDNESS - float(m["input_i"]), -1.5 - float(m["input_tp"]), 6.0)  # тихое не тянем больше чем на 6 дБ
     af = f"volume={gain:.2f}dB,aresample={SAMPLE_RATE},apad,atrim=end_sample={n_samples}"
     cmd = cut[:1] + ["-v", "error"] + cut[2:] + ["-map_metadata", "-1", "-af", af, "-ac", "2", "-ar", str(SAMPLE_RATE),
                                               "-f", "s16le", "-"]
-    r = subprocess.run(cmd, check=False, capture_output=True)
+    r = subprocess.run(cmd, capture_output=True)
     if r.returncode != 0:
         raise QuizError(f"Не удалось вырезать отрывок из {Path(src).name}:\n{r.stderr.decode(errors='replace').strip()}")
     data = np.frombuffer(r.stdout, dtype="<i2")
@@ -1288,7 +1288,7 @@ def speech(ws, voice, text):
                 try:
                     edge_tts.Communicate(text, voice).save_sync(str(tmp))
                     break
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     error = e
                     time.sleep(1 + attempt)
             else:
@@ -1377,7 +1377,7 @@ def waveform(ws, path, buckets=1000):
         return json.loads(cache.read_text())
     rate = 4000
     r = subprocess.run(["ffmpeg", "-v", "error", "-i", str(path), "-vn", "-ac", "1", "-ar", str(rate),
-                        "-f", "s16le", "-"], check=False, capture_output=True)
+                        "-f", "s16le", "-"], capture_output=True)
     x = np.abs(np.frombuffer(r.stdout, dtype="<i2").astype(np.float32))
     duration = len(x) / rate
     if len(x) < buckets:

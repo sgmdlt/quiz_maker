@@ -66,10 +66,10 @@ def tool_info(force=False):
         info["problem"] = "yt-dlp не найден"
     else:
         try:
-            r = subprocess.run(cmd + ["--version"], check=False, capture_output=True, text=True, timeout=30)
+            r = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=30)
             info["ytdlp"] = r.stdout.strip() or None
             r = subprocess.run(cmd + ["--ignore-config", "-v", "--simulate", "about:blank"],
-                               check=False, capture_output=True, text=True, timeout=30)
+                               capture_output=True, text=True, timeout=30)
             m = re.search(r"JS runtimes:\s*(.+)", r.stdout + r.stderr)
             runtime = m.group(1).strip() if m else ""
             if runtime and runtime.lower() != "none":
@@ -209,7 +209,7 @@ def download_video(url, dest, extra_args=()):
     if out.is_file():
         return out
     r = subprocess.run(cmd + ["-f", "bv*[height<=1080]+ba/b", "--merge-output-format", "mp4", "--no-playlist",
-                              "-o", str(out), *extra_args, url], check=False, capture_output=True, text=True)
+                              "-o", str(out), *extra_args, url], capture_output=True, text=True)
     if r.returncode != 0 or not out.is_file():
         raise DownloadError(friendly_error(r.stdout.splitlines() + r.stderr.splitlines(), True))
     return out
