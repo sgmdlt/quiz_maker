@@ -174,7 +174,8 @@ def main():
                 if any(t.get("url") and not (ws.resolve(t.get("file")) and ws.resolve(t["file"]).is_file())
                        for t in project["tracks"] if t.get("enabled", True)):
                     q.download_tracks(ws, slug, log=say, progress=progress_bar)
-            r = q.build(ws, slug, limit=a.limit, log=say, progress=progress_bar, round_id=a.round, voice=not a.no_voice)
+            r = q.build(ws, slug, limit=a.limit, log=say, progress=progress_bar, round_id=a.round,
+                        narration="silent" if a.no_voice else "voiced")
             print(f"\n  видео     {ws.resolve(r['video'])}")
             print(f"  обложка   {ws.resolve(r['thumbnail'])}")
             print(f"  описание  {ws.resolve(r['description'])}")

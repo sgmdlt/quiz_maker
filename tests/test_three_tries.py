@@ -2,21 +2,22 @@ import itertools
 import subprocess
 
 import quiz_core as qc
+import scenario as sc
 
 
 def test_answer_seconds_round_overrides_timing():
     project = {"timing": {"answer": 6}}
-    assert qc.answer_seconds(project, {}) == 6
-    assert qc.answer_seconds(project, {"answer_seconds": 4}) == 4
+    assert sc.answer_seconds(project, {}) == 6
+    assert sc.answer_seconds(project, {"answer_seconds": 4}) == 4
 
 
 def test_answer_groups_and_labels():
-    three = {"three_tries": True}
+    three = {"kind": "three_tries"}
     items = list("abcdefg")
-    assert qc.answer_groups(three, items) == [["a", "b", "c"], ["d", "e", "f"], ["g"]]
-    assert qc.question_labels(three, items) == ["1.1", "1.2", "1.3", "2.1", "2.2", "2.3", "3.1"]
-    assert qc.answer_groups({}, items[:2]) == [["a"], ["b"]]
-    assert qc.question_labels({}, items[:2]) == ["1", "2"]
+    assert sc.answer_groups(three, items) == [["a", "b", "c"], ["d", "e", "f"], ["g"]]
+    assert sc.question_labels(three, items) == ["1.1", "1.2", "1.3", "2.1", "2.2", "2.3", "3.1"]
+    assert sc.answer_groups({}, items[:2]) == [["a"], ["b"]]
+    assert sc.question_labels({}, items[:2]) == ["1", "2"]
 
 
 def _tone(path, freq):
@@ -33,7 +34,7 @@ def test_build_three_tries_round(tmp_path, monkeypatch):
         tracks.append({"file": path.name, "title": title, "artist": "Группа" if k < 3 else "Band", "duration": 20.0})
     slug = ws.create("Тест", {
         "voice": "", "covers": {"online": False},
-        "rounds": [{"id": "r1", "title": "Три попытки", "rules": "", "three_tries": True, "answer_seconds": 2,
+        "rounds": [{"id": "r1", "title": "Три попытки", "rules": "", "kind": "three_tries", "answer_seconds": 2,
                     "gap": 3}],
         "tracks": tracks,
     })

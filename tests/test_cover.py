@@ -15,7 +15,7 @@ def test_quiz_covers_dedup_and_three_tries(tmp_path):
     files = [_solid(tmp_path / "c" / f"{i}.png", (i * 30, 0, 0)) for i in range(5)]
     rel = [f"c/{f.name}" for f in files]
     project = {
-        "rounds": [{"id": "r1"}, {"id": "r2", "three_tries": True}],
+        "rounds": [{"id": "r1"}, {"id": "r2", "kind": "three_tries"}],
         "tracks": [
             {"round": "r1", "cover": rel[0]},
             {"round": "r1", "cover_auto": rel[0]},  # тот же файл — второй раз не берём
