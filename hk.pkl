@@ -9,6 +9,7 @@ steps {
   ["ruff_format"] = Builtins.ruff_format
   ["typos"] = Builtins.typos  // исключения — в _typos.toml
   ["betterleaks"] = Builtins.betterleaks  // секреты в изменённых файлах; история — в mise run check
+  ["jactionlint"] = Builtins.jactionlint  // workflow и dependabot.yml
   // границы модулей из CLAUDE.md: правила в rules/, тесты правил — в rule-tests/
   ["ast-grep"] {
     glob = List("*.py")
