@@ -1,0 +1,6 @@
+id: sources-without-core
+valid:
+  - "import urllib.request"
+invalid:
+  - "import quiz_core"
+  - "from scenario import Slide"

@@ -1,0 +1,11 @@
+id: sources-without-core
+language: python
+severity: error
+message: "youtube.py и covers.py от ядра не зависят (CLAUDE.md, «Архитектура»)"
+files: ["youtube.py", "covers.py"]
+rule:
+  any:
+    - kind: import_statement
+      has: { kind: dotted_name, regex: "^(quiz_core|scenario|server|make_quiz)(\\.|$)", stopBy: end }
+    - kind: import_from_statement
+      has: { field: module_name, regex: "^(quiz_core|scenario|server|make_quiz)(\\.|$)" }
