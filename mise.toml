@@ -1,0 +1,20 @@
+# Инструменты проекта и проверки. Одни и те же версии у разработчика и в CI.
+# Python-зависимости (ruff, pytest…) живут в pyproject.toml/uv.lock, здесь — бинарники.
+[tools]
+uv = "0.10.4"
+hk = "2.10.0"
+
+[env]
+# инструменты из uv.lock (ruff, pytest…) видны hk и задачам
+_.path = ["{{config_root}}/.venv/bin"]
+
+[tasks.check]
+description = "Все проверки: то же самое запускает CI"
+run = [
+  "hk check --all",
+  "uv run pytest -q",
+]
+
+[tasks.fix]
+description = "Безопасные автоисправления (ruff lint --fix и ruff format)"
+run = "hk fix --all"
