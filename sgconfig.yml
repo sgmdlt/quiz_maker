@@ -1,0 +1,4 @@
+# Свои правила кода на ast-grep (rules/), с тестами (rule-tests/): ast-grep test
+ruleDirs: [rules]
+testConfigs:
+  - testDir: rule-tests

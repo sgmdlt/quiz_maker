@@ -1,0 +1,10 @@
+id: scenario-is-pure
+valid:
+  - "from dataclasses import dataclass, field, replace"
+  - "import math"
+invalid:
+  - "import numpy as np"
+  - "from PIL import Image"
+  - "import quiz_core as qc"
+  - "from quiz_core import build"
+  - "import subprocess"

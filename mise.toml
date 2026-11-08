@@ -5,6 +5,7 @@ uv = "0.10.4"
 hk = "2.10.0"
 typos = "1.51.1"
 betterleaks = "1.9.0"
+ast-grep = "0.51.0"
 
 [env]
 # инструменты из uv.lock (ruff, pytest…) видны hk и задачам
@@ -16,6 +17,7 @@ run = [
   "hk check --all",
   "betterleaks git --redact --no-banner .",  # секреты во всей истории git
   "deptry .",  # неиспользуемые и недостающие зависимости
+  "ast-grep test --skip-snapshot-tests",  # сами правила ast-grep проверены своими тестами
   "uv run pytest -q",
 ]
 

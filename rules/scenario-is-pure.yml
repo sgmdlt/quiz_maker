@@ -1,0 +1,11 @@
+id: scenario-is-pure
+language: python
+severity: error
+message: "scenario.py — чистый сценарий ролика: без ядра, сервера, картинок, звука и внешних программ (CLAUDE.md, «Архитектура»)"
+files: ["scenario.py"]
+rule:
+  any:
+    - kind: import_statement
+      has: { kind: dotted_name, regex: "^(quiz_core|server|make_quiz|youtube|covers|spectrum_ring|cover|PIL|numpy|subprocess)(\\.|$)", stopBy: end }
+    - kind: import_from_statement
+      has: { field: module_name, regex: "^(quiz_core|server|make_quiz|youtube|covers|spectrum_ring|cover|PIL|numpy|subprocess)(\\.|$)" }
