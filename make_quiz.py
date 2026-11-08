@@ -10,7 +10,7 @@ make_quiz.py — конструктор видео-квизов «Угадай �
     uv run make_quiz.py list                                          # какие квизы есть
     uv run make_quiz.py add ugadai-khit-2000-kh ещё.txt               # добавить треки
     uv run make_quiz.py download ugadai-khit-2000-kh                  # скачать треки и найти обложки
-    uv run make_quiz.py preview ugadai-khit-2000-kh                   # кадры всех экранов и лист ответов
+    uv run make_quiz.py preview ugadai-khit-2000-kh                   # кадры всех слайдов и лист ответов
     uv run make_quiz.py build ugadai-khit-2000-kh --limit 2           # пробный ролик из 2 песен
     uv run make_quiz.py build ugadai-khit-2000-kh                     # весь квиз
 
@@ -67,7 +67,7 @@ def find_slug(ws, name):
     p = Path(name)
     if (p / "project.json").is_file():
         return p.name if p.absolute().parent == ws.projects.absolute() else sys.exit(
-            f"Проект должен лежать в {ws.projects}")
+            f"Квиз должен лежать в {ws.projects}")
     slugs = [x["slug"] for x in ws.list_projects()]
     if name in slugs:
         return name
@@ -109,15 +109,15 @@ def main():
     s.add_argument("project")
     s.add_argument("file", type=Path)
 
-    for name, help_ in (("download", "скачать треки и найти обложки"), ("covers", "найти обложки заново"),
-                        ("preview", "кадры всех экранов и лист ответов")):
+    for name, help_ in (("download", "скачать треки и найти обложки альбомов"), ("covers", "найти обложки альбомов заново"),
+                        ("preview", "кадры всех слайдов и лист ответов")):
         s = sub.add_parser(name, help=help_)
         s.add_argument("project")
 
     s = sub.add_parser("build", help="собрать видео")
     s.add_argument("project")
-    s.add_argument("--limit", type=int, help="пробный ролик: первые N песен каждого тура")
-    s.add_argument("--round", help="только этот тур (название или id) — пробный ролик")
+    s.add_argument("--limit", type=int, help="пробный ролик: первые N треков каждого раунда")
+    s.add_argument("--round", help="только этот раунд (название или id) — пробный ролик")
     s.add_argument("--no-download", action="store_true", help="не докачивать треки перед сборкой")
     s.add_argument("--no-voice", action="store_true", help="без озвучки заставок")
 

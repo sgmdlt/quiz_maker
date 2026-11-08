@@ -67,7 +67,7 @@ DEFAULT_PROJECT = {
     "version": 1,
     "name": "Новый квиз",
     "format": "horizontal",           # horizontal (1920x1080) | vertical (1080x1920, Shorts)
-    "timing": {"question": 10, "answer": 6, "gap": 2, "answer_gap": 1, "intro": 3, "rounds": 4, "round": 6, "answers_card": 3, "outro": 4},
+    "timing": {"question": 10, "answer": 6, "gap": 2, "answer_gap": 1, "cover": 3, "intro": 3, "rounds": 4, "round": 6, "answers_card": 3, "outro": 4},
     "voice": "ru-RU-DmitryNeural",    # голос для заставок квиза и туров (VOICES), "" — без озвучки
     # фоновая музыка: путь к файлу или ссылка (YouTube, начало из ?t=); у тура своя — round["music"]
     "intro_music": "",
@@ -103,6 +103,7 @@ DEFAULT_PROJECT = {
         "answer_text": "#FFFFFF",     # слайд ответа: фон — обложка, поэтому цвета свои
         "answer_muted": "#CFC6E8",
         "background": "",             # картинка для фона вместо градиента
+        "logo": "",                   # PNG логотипа на заставках (из cover.py), пусто — солнце из столбиков
         "cover_backdrop": True,       # фон экрана ответа — размытая обложка
     },
     "visualizer": {},                 # только изменённые параметры RingConfig
@@ -150,8 +151,8 @@ TRACK_EDITABLE = {"round","enabled", "url", "start", "start2", "title", "artist"
 
 TEXT_PLACEHOLDERS = {
     "{n}": "номер вопроса", "{total}": "всего вопросов",
-    "{songs}": "«20 песен»", "{seconds}": "«10 секунд»", "{count}": "число песен",
-    "{round}": "название тура", "{round_n}": "номер тура",
+    "{songs}": "«20 песен»", "{seconds}": "«10 секунд»", "{count}": "число треков",
+    "{round}": "название раунда", "{round_n}": "номер раунда",
 }
 
 
@@ -174,7 +175,11 @@ def new_track(**fields_):
 
 def new_round(n):
     # id постоянный: квиз без туров при каждом чтении получает один и тот же первый тур
-    return {"id": f"r{n}", "title": f"Тур {n}", "rules": ""}
+    return {"id": f"r{n}", "title": f"Раунд {n}", "subtitle": "", "rules": ""}
+
+
+def round_title(rnd, n):
+    return rnd["title"] or f"Раунд {n}"
 
 
 def normalize(project):
@@ -355,7 +360,7 @@ class Workspace:
 
     def project_dir(self, slug):
         if not re.fullmatch(r"[\w\-]+", slug or ""):
-            raise QuizError(f"Неправильное имя проекта: {slug}")
+            raise QuizError(f"Неправильное имя квиза: {slug}")
         return self.projects / slug
 
     def lock(self, slug):
@@ -433,7 +438,7 @@ class Workspace:
     def load(self, slug):
         f = self.project_dir(slug) / "project.json"
         if not f.is_file():
-            raise QuizError(f"Нет проекта «{slug}»")
+            raise QuizError(f"Нет квиза «{slug}»")
         try:
             return deep_merge(normalize(json.loads(f.read_text(encoding="utf-8"))), self.theme())
         except json.JSONDecodeError as e:
@@ -840,8 +845,13 @@ def draw_lines(draw, lines, font, x, y, fill, anchor="ma"):
 VIDEO_TEXT_SCALE = 0.75  # подпись ответа поверх видео мельче, чем на обычном ответе
 
 
+LOGO_SCALE = 1.6  # во сколько раз логотип-картинка выше солнца из столбиков
+ROUND_LIFT = 0.05  # заставка тура поднята на 5% высоты кадра
+ROUND_LOGO_DROP = 0.04  # и логотип на ней ближе к названию (доля короткой стороны кадра)
+
+
 class Renderer:
-    def __init__(self, width, height, style, fonts, ring_cfg=None, background=None):
+    def __init__(self, width, height, style, fonts, ring_cfg=None, background=None, logo=None):
         self.W, self.H = width, height
         self.u = min(width, height)
         self.cx = width // 2
@@ -852,6 +862,7 @@ class Renderer:
         self.ring = (SpectrumRing(ring_cfg, self.u, lambda s: fonts.get("heading", s))
                      if ring_cfg is not None else None)
         self.sun = SpectrumRing(ring_cfg or RingConfig(), self.u * 0.9, self.hf)  # логотип на заставках
+        self.logo = Image.open(logo).convert("RGBA") if logo and Path(logo).is_file() else None
 
     def c(self, name):
         return ImageColor.getrgb(self.style[name])
@@ -900,25 +911,68 @@ class Renderer:
         d.text((cx, cy), text, font=font, fill=self.c(color), anchor="mm")
         return max(y, box[3])
 
+    def logo_h(self):
+        """Высота логотипа на заставках: картинка style.logo крупнее солнца."""
+        return self.sun.visual_radius * (LOGO_SCALE if self.logo is not None else 1)
+
+    def _logo(self, img, base_y):
+        """Логотип по центру, низ — на base_y: картинка style.logo высотой с солнце или само солнце."""
+        if self.logo is None:
+            return self.sun.draw_sun(img, (self.cx, round(base_y)))
+        h = self.logo_h()
+        logo = self.logo.resize((max(1, round(self.logo.width * h / self.logo.height)), round(h)),
+                                Image.Resampling.LANCZOS)
+        img.paste(logo, (round(self.cx - logo.width / 2), round(base_y - h)), logo)
+
+    def rounds_list(self, titles):
+        """Список туров в два столбца без номеров, сверху логотип."""
+        img = self.bg.copy()
+        d = ImageDraw.Draw(img)
+        half = (len(titles) + 1) // 2
+        gap, size = self.u * 0.12, self.u * 0.06
+        font = self.tf(size)
+        while size > self.u * 0.03 and 2 * max(d.textlength(t, font=font) for t in titles) + gap > self.W * 0.86:
+            size *= 0.92
+            font = self.tf(size)
+        col_w = max(d.textlength(t, font=font) for t in titles)
+        lh = line_height(font) * 1.15
+        eq_h, logo_gap = self.logo_h(), self.u * 0.06
+        y = (self.H - (eq_h + logo_gap + lh * half)) / 2
+        self._logo(img, y + eq_h)
+        y += eq_h + logo_gap
+        x0 = (self.W - 2 * col_w - gap) / 2
+        for k, col in enumerate((titles[:half], titles[half:])):
+            for i, title in enumerate(col):
+                d.text((x0 + k * (col_w + gap) + col_w / 2, y + i * lh), title, font=font, fill=self.c("text"),
+                       anchor="ma")
+        return img
+
     def title_card(self, title, subtitle="", sub_max_lines=2):
+        return self._stack([(title, self.hf, 0.13, 0.06, 3, "text"),
+                            (subtitle, self.tf, 0.055, 0.03, sub_max_lines, "muted")])
+
+    def round_card(self, title, subtitle, rules):
+        """Заставка тура: название, краткое описание, правила; весь блок чуть выше центра."""
+        return self._stack([(title, self.hf, 0.13, 0.06, 3, "text"),
+                            (subtitle, self.tf, 0.06, 0.035, 3, "text"),
+                            (rules, self.tf, 0.042, 0.03, 4, "muted")], lift=ROUND_LIFT, logo_drop=ROUND_LOGO_DROP)
+
+    def _stack(self, blocks, lift=0.0, logo_drop=0.0):
+        """Логотип и под ним блоки текста (текст, шрифт, размер, мин. размер в долях u, строк, цвет)
+        по центру кадра; lift — подъём блока в долях высоты, logo_drop — логотип ниже на долю u."""
         img = self.bg.copy()
         d = ImageDraw.Draw(img)
         max_w = self.W * 0.86
-        font, lines = fit_text(d, title, max_w, self.u * 0.13, self.u * 0.06, 3, self.hf) if title else (None, [])
-        sub_font, sub_lines = (fit_text(d, subtitle, max_w, self.u * 0.055, self.u * 0.03, sub_max_lines, self.tf)
-                               if subtitle else (None, []))
-        eq_h, gap = self.sun.visual_radius, self.u * 0.06
+        fitted = [(*fit_text(d, text, max_w, self.u * hi, self.u * lo, n, font), color)
+                  for text, font, hi, lo, n, color in blocks if text]
+        eq_h, gap = self.logo_h(), self.u * 0.024
         logo_gap = self.u * 0.025  # от основания солнца до текста
-        total = eq_h + logo_gap + (line_height(font) * len(lines) if lines else 0)
-        if sub_lines:
-            total += (gap * 0.4 if lines else 0) + line_height(sub_font) * len(sub_lines)
-        y = (self.H - total) / 2
-        self.sun.draw_sun(img, (self.cx, y + eq_h))
+        total = eq_h + logo_gap + sum(line_height(f) * len(ls) for f, ls, _ in fitted) + gap * max(0, len(fitted) - 1)
+        y = (self.H - total) / 2 - self.H * lift
+        self._logo(img, y + eq_h + self.u * logo_drop)
         y += eq_h + logo_gap
-        if lines:
-            y = draw_lines(d, lines, font, self.cx, y, self.c("text")) + gap * 0.4
-        if sub_lines:
-            draw_lines(d, sub_lines, sub_font, self.cx, y, self.c("muted"))
+        for font, lines, color in fitted:
+            y = draw_lines(d, lines, font, self.cx, y, self.c(color)) + gap
         return img
 
     # --- вопрос ---
@@ -1066,12 +1120,12 @@ class Renderer:
         d = ImageDraw.Draw(img)
         font, lines = fit_text(d, group_answer(rows) or " ", self.W * 0.86, self.u * 0.09, self.u * 0.05, 2, self.hf)
         y = draw_lines(d, lines, font, self.cx, header_bottom + self.u * 0.03, self.c("text"))
-        y += self.u * 0.13  # отступ между исполнителем и песнями
+        y += self.u * 0.08  # отступ между исполнителем и песнями
         horizontal = self.W >= self.H
         n = len(rows)
         if horizontal:  # колонки: обложка, под ней название и альбом · год
             col_w = self.W * 0.88 / 3
-            size = int(min(col_w * 0.75, (self.H - y) * 0.5))  # ниже место под две строки названия и альбома
+            size = int(min(col_w * 0.75, (self.H - y) * 0.56))  # ниже место под две строки названия и альбома
             top = y
         else:  # строки: обложка слева, тексты справа
             size = int(min(self.W * 0.3, (self.H - y) * 0.8 / 3))
@@ -1154,9 +1208,8 @@ def round_side(texts, vals):
 
 
 def rounds_card(project):
-    """Слайд со списком туров, без заголовка: «1. Название» построчно."""
-    rounds = project["rounds"]
-    return "", "\n".join(f"{k}. {r['title']}" for k, r in enumerate(rounds, 1)), len(rounds)
+    """Названия туров для слайда со списком (без номеров)."""
+    return [r["title"].strip() for r in project["rounds"]]
 
 
 def ring_config(project):
@@ -1175,7 +1228,7 @@ def make_renderer(ws, project, size=None):
         except (ValueError, KeyError):
             raise QuizError(f"Не понимаю цвет {key}: «{style.get(key)}»")
     return Renderer(W, H, style, Fonts(ws, project["fonts"]), ring_config(project),
-                    ws.resolve(style.get("background")))
+                    ws.resolve(style.get("background")), ws.resolve(style.get("logo")))
 
 
 # ───────────────────────── звук ─────────────────────────
@@ -1517,6 +1570,7 @@ def preview(ws, slug, track_id=None, log=print):
     project = ws.load(slug)
     r = make_renderer(ws, project)
     timing, texts = project["timing"], project["texts"]
+    cover_file = ws.project_dir(slug) / "cover.png"
     enabled = [t for t in project["tracks"] if t.get("enabled", True)]
     count = len(enabled) or 1
     vals = text_values(count, timing["question"])
@@ -1562,9 +1616,10 @@ def preview(ws, slug, track_id=None, log=print):
     reveal_s = min(r.ring.cfg.reveal_seconds, pre / FPS) if pre else r.ring.cfg.reveal_seconds
     reveal_i = min(pre + q_frames - 1, int(reveal_s * FPS * 0.45))
     images = {
-        "intro": r.title_card(fmt(texts["intro_title"], **vals), fmt(texts["intro_subtitle"], **vals), 8),
-        "rounds": r.title_card(*rounds_card(project)),
-        "round": r.title_card(rnd["title"], fmt(rnd["rules"], **round_vals), 8),
+        "intro": (ImageOps.fit(Image.open(cover_file).convert("RGB"), (r.W, r.H)) if cover_file.is_file() else
+                  r.title_card(fmt(texts["intro_title"], **vals), fmt(texts["intro_subtitle"], **vals), 8)),
+        "rounds": r.rounds_list(rounds_card(project)),
+        "round": r.round_card(rnd["title"], fmt(rnd.get("subtitle") or "", **round_vals), fmt(rnd["rules"], **round_vals)),
         "reveal": r.question_frame(base, levels, reveal_i, q_frames, pre_frames=pre),
         "question": r.question_frame(base, levels, pre + int(q_frames * 0.55), q_frames, pre_frames=pre),
         "answers": r.title_card(fmt(texts["answers_title"], **round_vals), fmt(texts["answers_subtitle"], **round_vals)),
@@ -1698,10 +1753,10 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     if round_id:
         rnd = next((r for r in project["rounds"] if round_id in (r["id"], r["title"])), None)
         if not rnd:
-            raise QuizError(f"Нет тура «{round_id}»")
+            raise QuizError(f"Нет раунда «{round_id}»")
         rows = [r for r in rows if r["round"] == rnd["id"]]
         if not rows:
-            raise QuizError(f"В туре «{rnd['title']}» нет включённых треков")
+            raise QuizError(f"В раунде «{rnd['title']}» нет включённых треков")
     rounds = group_rounds(project, rows)
     if limit:  # пробный ролик — первые N вопросов каждого тура
         rounds = [(rnd, rs[:int(limit)]) for rnd, rs in rounds]
@@ -1726,8 +1781,9 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     def card_frames(key, title):  # пустой заголовок или нулевая длительность — экрана нет
         return frames_for(timing[key]) if timing[key] > 0 and title else 0
 
-    def add_card(key, card, narration="", music="", shown=None):
-        """narration — что читает диктор (экран держится, пока он не дочитает), music — фоновая музыка."""
+    def add_card(key, card, narration="", music="", shown=None, image=None):
+        """narration — что читает диктор (экран держится, пока он не дочитает), music — фоновая музыка,
+        image — готовая картинка экрана вместо заставки из card."""
         frames, audio = card_frames(key, card[0] if shown is None else shown), None
         if not frames:
             return
@@ -1737,11 +1793,12 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
             frames = max(frames, frames_for(len(audio) / SAMPLE_RATE + 1))
         if music:
             beds[len(timeline)] = music
-        timeline.append(("card", frames, audio, card))
+        timeline.append(("card", frames, audio, image if image is not None else renderer.title_card(*card)))
 
     out_dir = ws.project_dir(slug) / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = f"{slug}_test" if limit or round_id else slug
+    cover_file = ws.project_dir(slug) / "cover.png"
     out = out_dir / f"{stem}.mp4"
 
     # 1. Обложки
@@ -1802,9 +1859,15 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     chapters_at = {}  # номер сегмента → глава в описании
     log("Озвучиваю заставки…" if project["voice"] else "Собираю сценарий…")
     if not round_id:
-        add_card("intro", intro, fmt(texts["intro_narration"], **vals) or "\n".join(intro[:2]), project["intro_music"])
-        card = rounds_card(project)
-        add_card("rounds", card, fmt(texts["rounds_narration"], **vals) or card[1], project["intro_music"], card[1])
+        greeting = fmt(texts["intro_narration"], **vals) or "\n".join(intro[:2])
+        if cover_file.is_file() and timing["cover"] > 0:  # обложка из cover.py вместо заставки квиза
+            add_card("cover", ("cover",), greeting, project["intro_music"],
+                     image=ImageOps.fit(Image.open(cover_file).convert("RGB"), (renderer.W, renderer.H)))
+        else:
+            add_card("intro", intro, greeting, project["intro_music"])
+        titles = "\n".join(rounds_card(project))
+        add_card("rounds", ("",), fmt(texts["rounds_narration"], **vals) or titles, project["intro_music"], titles,
+                 renderer.rounds_list(rounds_card(project)))
     first = 0
     for k, (rnd, rs) in enumerate(rounds, start=1):
         rv = text_values(len(rs), question_seconds(project, rnd), round=rnd["title"],
@@ -1815,10 +1878,11 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
             rv["total"] = len(groups)
         idx = list(zip(labels, range(first, first + len(rs))))
         first += len(rs)
-        chapters_at[len(timeline)] = rnd["title"] or f"Тур {k}"
-        rules = fmt(rnd["rules"], **rv)
-        narration = fmt(rnd.get("narration") or "", **rv) or "\n".join(p for p in (rnd["title"], rules) if p)
-        add_card("round", (rnd["title"], rules, 8), narration, rnd.get("music", ""))
+        chapters_at[len(timeline)] = round_title(rnd, k)
+        subtitle, rules = fmt(rnd.get("subtitle") or "", **rv), fmt(rnd["rules"], **rv)
+        narration = fmt(rnd.get("narration") or "", **rv) or "\n".join(p for p in (rnd["title"], subtitle, rules) if p)
+        add_card("round", (rnd["title"], subtitle, rules), narration, rnd.get("music", ""),
+                 image=renderer.round_card(rnd["title"], subtitle, rules))
         qn = {i: n for n, i in idx}
 
         def add_question(i):
@@ -1838,7 +1902,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         for _, i in idx:
             add_question(i)
         card = (fmt(texts["answers_title"], **rv), fmt(texts["answers_subtitle"], **rv))
-        chapters_at[len(timeline)] = card[0] or f"Ответы · {rnd['title'] or f'Тур {k}'}"
+        chapters_at[len(timeline)] = card[0] or f"Ответы · {round_title(rnd, k)}"
         add_card("answers_card", card, fmt(texts["answers_narration"], **rv), rnd.get("music", ""))
         for qn, i in idx:
             row = rows[i]
@@ -1862,7 +1926,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
                 part[:len(voice)] += voice
             timeline[k] = (kind, frames, part, data)
     total_frames = sum(seg[1] for seg in timeline)
-    log(f"Квиз: {n} {plural(n, 'песня', 'песни', 'песен')}, видео {fmt_ts(total_frames / FPS)}, "
+    log(f"Квиз: {n} {plural(n, 'трек', 'трека', 'треков')}, видео {fmt_ts(total_frames / FPS)}, "
         f"{renderer.W}x{renderer.H}")
 
     with tempfile.TemporaryDirectory(prefix="quiz_") as tmp:
@@ -1903,7 +1967,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         try:
             for kind, frames_n, audio, data in timeline:
                 if kind == "card":
-                    writer.segment(renderer.title_card(*data), frames_n)
+                    writer.segment(data, frames_n)
                 elif kind == "question":
                     i, lv = data
                     row = rows[i]
@@ -1940,8 +2004,11 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     # 6. Обложка для YouTube и текст описания с таймкодами
     progress(0.99, "Готовлю обложку и описание")
     thumb = out_dir / f"{stem}_thumbnail.jpg"
-    Renderer(1280, 720, project["style"], renderer.fonts, ring_cfg,
-             background=ws.resolve(project["style"].get("background"))).title_card(intro[0]).save(thumb, quality=92)
+    if cover_file.is_file():  # обложка из cover.py; JPEG 1280×720 укладывается в лимит YouTube
+        ImageOps.fit(Image.open(cover_file).convert("RGB"), (1280, 720)).save(thumb, quality=90)
+    else:
+        Renderer(1280, 720, project["style"], renderer.fonts, ring_cfg,
+                 background=ws.resolve(project["style"].get("background"))).title_card(intro[0]).save(thumb, quality=92)
 
     desc_lines = [f"{intro[0]}!"] + ([intro[1]] if intro[1] else []) + [""]
     t, chapters = 0.0, []
@@ -1953,7 +2020,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     desc_lines += [f"{fmt_ts(ts)} {name}" for ts, name in chapters] + ["", "Ответы:"]
     for k, (rnd, rs) in enumerate(rounds, start=1):
         if len(rounds) > 1:
-            desc_lines.append(rnd["title"] or f"Тур {k}")
+            desc_lines.append(round_title(rnd, k))
         if rnd.get("three_tries"):
             desc_lines += [f"{g}. {group_answer(grp)} — {', '.join(r['title'] for r in grp)}"
                            for g, grp in enumerate(answer_groups(rnd, rs), start=1)]
