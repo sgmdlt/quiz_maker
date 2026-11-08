@@ -68,3 +68,11 @@ def test_chapters_start_at_zero_and_mark_answers():
     names = [name for _, name in sc.chapters(slides)]
     assert names == ["Хиты", "Ответы · Хиты", "Кино", "Ответы · Кино"]
     assert sc.chapters(slides)[0][0] == 0.0
+
+
+def test_social_cover_opens_quiz_and_round_trial_skips_shared_slides():
+    p = _quiz([{"id": "r1", "title": "Хиты"}])
+    tracks = {"r1": [_track("a")]}
+    assert _slides(p, tracks, opening="social_cover")[0].kind == "social_cover"
+    kinds = [s.kind for s in _slides(p, tracks, scope="round_trial")]
+    assert kinds == ["round_intro", "question", "answers_intro", "answer"]
