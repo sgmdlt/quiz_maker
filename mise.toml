@@ -4,6 +4,7 @@
 uv = "0.10.4"
 hk = "2.10.0"
 typos = "1.51.1"
+betterleaks = "1.9.0"
 
 [env]
 # инструменты из uv.lock (ruff, pytest…) видны hk и задачам
@@ -13,6 +14,7 @@ _.path = ["{{config_root}}/.venv/bin"]
 description = "Все проверки: то же самое запускает CI"
 run = [
   "hk check --all",
+  "betterleaks git --redact --no-banner .",  # секреты во всей истории git
   "uv run pytest -q",
 ]
 
