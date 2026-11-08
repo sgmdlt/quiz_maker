@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 
 import quiz_core as qc
+import scenario as sc
 
 
 def _tone(path, freq):
@@ -13,7 +14,7 @@ def _tone(path, freq):
 
 def test_round_titles_without_numbers():
     project = {"rounds": [{"title": " Разминка"}, {"title": "OST"}, {"title": "Блиц"}]}
-    assert qc.round_titles(project) == ["Разминка", "OST", "Блиц"]
+    assert sc.round_titles(project) == ["Разминка", "OST", "Блиц"]
 
 
 def test_title_card_uses_logo_file(tmp_path):

@@ -67,7 +67,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   поверх лежит `Renderer.answer_overlay` (затемнение снизу + шапка + тексты ответа слева внизу, без обложки альбома;
   раскладку как у ответа с обложкой альбома и без затемнения пробовали — пользователь вернул эту). Поле трека
   `video_source` (источник видео) — самая верхняя строка подписи. Шрифты подписи поверх видео
-  уменьшены на `VIDEO_TEXT_SCALE` (0.75). В предпросмотре — стоп-кадр из начала видео (`answer_preview`).
+  уменьшены на `VIDEO_TEXT_SCALE` (0.75). В предпросмотре — стоп-кадр из начала видео (первый кадр `render_slide`).
   Звук на ответе по умолчанию `replay` (тот же отрывок), чтобы было понятно, к какому вопросу ответ.
 - **Обложки альбомов** (`covers.py`): своя → вшитая (≥400 px) → кэш `library/covers/auto` → Deezer → iTunes →
   миниатюра YouTube (с обрезкой чёрных полей) → вшитая маленькая → нарисованная пластинка.
@@ -143,6 +143,7 @@ uv run cover.py <slug> [--port 8790]             # отдельный конст
   треки, части звука `Clip`/`Silence`/`Narration`/`VideoClip`, фоновая музыка, глава) и правила раунда
   (`question_seconds`, `answer_groups`, `question_labels`…). Не читает файлы и не зовёт ffmpeg; длительность озвучки
   приходит функцией. `build` по сценарию нарезает звук, рисует слайды (`render_slide`) и считает главы (`chapters`).
+  Предпросмотр берёт слайды из того же сценария (`preview_slides`): слайда, которого не будет в ролике, в нём нет.
   Остальная логика лежит в `quiz_core.py`: `Workspace` (пути, блокировки проекта, чтение и запись
   `project.json`), `parse_track_list`, `Renderer` (слайды на Pillow), `preview`, `answers_sheet`,
   `download_tracks`, `find_covers`, `build` + `VideoWriter` (pipe в ffmpeg).
