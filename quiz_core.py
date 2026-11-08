@@ -1336,31 +1336,37 @@ def track_label(t):
     return label.replace("\n", ", ")  # переносы — только для слайдов
 
 
-def prepare_rows(ws, project, need_audio=True):
-    """Включённые треки с полными путями. Проверяет, что всё скачано и время начала в пределах трека."""
+def track_row(ws, t):
+    """Строка трека для слайдов: поля трека с полными путями. Единственное место, где перечислены эти поля."""
+    path = ws.resolve(t.get("file"))
+    return {
+        "id": t["id"], "round": t["round"], "path": path, "start": float(t["start"] or 0), "start2": t["start2"],
+        "title": t["title"] or (path.stem if path else "без названия"), "artist": t["artist"],
+        "album": t["album"], "year": t["year"], "hint": t["hint"],
+        "question": t["question"], "answer": t["answer"], "answer_video": t["answer_video"],
+        "video_source": t["video_source"],
+        "cover": ws.resolve(t["cover"]) if t.get("cover") else None,
+        "thumb": ws.resolve(t["thumb"]) if t.get("thumb") else None,
+    }
+
+
+def prepare_rows(ws, project):
+    """Включённые треки для сборки. Проверяет, что всё скачано и время начала в пределах трека."""
     rows, errors = [], []
     for i, t in enumerate(project["tracks"], start=1):
         if not t.get("enabled", True):
             continue
-        path = ws.resolve(t.get("file"))
-        if need_audio and (not path or not path.is_file()):
+        row = track_row(ws, t)
+        if not row["path"] or not row["path"].is_file():
             errors.append(f"№{i} {track_label(t)}: трек ещё не скачан")
             continue
         duration = t.get("duration")
-        if need_audio and duration is None:
-            _, duration = probe_duration(path)
+        if duration is None:
+            _, duration = probe_duration(row["path"])
         if duration and t["start"] >= duration:
             errors.append(f"№{i} {track_label(t)}: начало {fmt_ts(t['start'])} позже конца трека ({fmt_ts(duration)})")
             continue
-        rows.append({
-            "id": t["id"], "round": t["round"], "path": path, "start": float(t["start"] or 0), "start2": t["start2"],
-            "title": t["title"] or (path.stem if path else "без названия"), "artist": t["artist"],
-            "album": t["album"], "year": t["year"], "hint": t["hint"],
-            "question": t["question"], "answer": t["answer"], "answer_video": t["answer_video"],
-            "video_source": t["video_source"],
-            "cover": ws.resolve(t["cover"]) if t.get("cover") else None,
-            "thumb": ws.resolve(t["thumb"]) if t.get("thumb") else None,
-        })
+        rows.append(row)
     if errors:
         raise QuizError("Исправьте треки:\n" + "\n".join(f"• {e}" for e in errors))
     return rows
@@ -1381,7 +1387,7 @@ def apply_covers(rows, results):
 def find_covers(ws, slug, track_ids=None, log=print, progress=None, cancel=None, forget=False):
     """Ищет обложки и записывает результат в проект (cover_auto, cover_source, альбом, год)."""
     project = ws.load(slug)
-    rows = [r for r in prepare_rows_loose(ws, project) if not track_ids or r["id"] in track_ids]
+    rows = [track_row(ws, t) for t in project["tracks"] if not track_ids or t["id"] in track_ids]
     finder = cover_finder(ws, project)
     if forget:
         for r in rows:
@@ -1480,21 +1486,6 @@ def download_tracks(ws, slug, ids=None, log=print, states=None, progress=None, c
     return {"downloaded": len(done), "failed": len(failed)}
 
 
-def prepare_rows_loose(ws, project):
-    """Все треки (даже не скачанные) — для поиска обложек."""
-    rows = []
-    for t in project["tracks"]:
-        rows.append({
-            "id": t["id"], "round": t["round"], "path": ws.resolve(t.get("file")), "title": t["title"],
-            "artist": t["artist"],
-            "album": t["album"], "year": t["year"], "question": t["question"], "answer": t["answer"],
-            "answer_video": t["answer_video"], "video_source": t["video_source"],
-            "cover": ws.resolve(t["cover"]) if t.get("cover") else None,
-            "thumb": ws.resolve(t["thumb"]) if t.get("thumb") else None,
-        })
-    return rows
-
-
 # ───────────────────────── предпросмотр ─────────────────────────
 
 def _fake_levels(n_frames, n_bars, seed=3):
@@ -1549,10 +1540,7 @@ def preview(ws, slug, track_id=None, log=print):
     track = next((t for t in enabled if t["id"] == track_id), None) or \
         next((t for t in enabled if ws.resolve(t.get("file")) and ws.resolve(t["file"]).is_file()), None) or \
         (enabled[0] if enabled else None)
-    rows = prepare_rows_loose(ws, {"tracks": enabled})
-    for row, t in zip(rows, enabled):
-        row |= {"start": float(t["start"] or 0), "start2": t["start2"], "hint": t["hint"],
-                "title": row["title"] or "Название песни", "artist": row["artist"] or "Исполнитель"}
+    rows = [track_row(ws, t) for t in enabled]
     if not rows:  # пример без треков
         rows = [{"id": "", "round": project["rounds"][0]["id"], "path": None, "start": 0.0, "start2": None, "hint": "",
                  "title": "Название песни", "artist": "Исполнитель", "album": "Альбом", "year": "2004",
@@ -1606,7 +1594,7 @@ def answers_sheet(ws, slug, log=print):
     """Все ответы на одном листе — проверить обложки."""
     project = ws.load(slug)
     r = make_renderer(ws, project)
-    rows = prepare_rows_loose(ws, {"tracks": [t for t in project["tracks"] if t.get("enabled", True)]})
+    rows = [track_row(ws, t) for t in project["tracks"] if t.get("enabled", True)]
     if not rows:
         raise QuizError("В квизе нет треков")
     apply_covers(rows, cover_finder(ws, project).find_all(rows))
