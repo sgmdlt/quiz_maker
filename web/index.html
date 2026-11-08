@@ -719,7 +719,7 @@ function renderRounds() {
       <label class="unit" title="Секунд на вопрос в этом раунде. Пусто — как в «Оформлении»"><input type="number" min="1" step="1" id="roundSeconds" style="width:90px" value="${cur.seconds ?? ""}" placeholder="${P().timing.question}" aria-label="Секунд на вопрос"></label>
       <label class="unit" title="Секунд на ответ в этом раунде (в «Трёх попытках» — на каждый трек тройки). Пусто — как в «Оформлении»"><input type="number" min="1" step="1" id="roundAnswerSeconds" style="width:90px" value="${cur.answer_seconds ?? ""}" placeholder="${P().timing.answer}" aria-label="Секунд на ответ"></label>
       <label class="unit" title="Пауза перед каждым вопросом в этом раунде, секунд. Пусто — как в «Оформлении»"><input type="number" min="0" step="0.5" id="roundGap" style="width:90px" value="${cur.gap ?? ""}" placeholder="${P().timing.gap}" aria-label="Пауза перед вопросом"></label>
-      <label title="Тройка вопросов — три подряд идущих трека одного исполнителя: вопросы 1.1, 1.2, 1.3 и один слайд ответа на тройку"><input type="checkbox" id="roundThree" ${cur.three_tries ? "checked" : ""}> Три попытки</label>
+      <select id="roundKind" aria-label="Вид раунда" title="«Три попытки»: тройка вопросов — три подряд идущих трека одного исполнителя, вопросы 1.1, 1.2, 1.3 и один слайд ответа на тройку"><option value="regular" ${cur.kind !== "three_tries" ? "selected" : ""}>Обычный раунд</option><option value="three_tries" ${cur.kind === "three_tries" ? "selected" : ""}>Три попытки</option></select>
       ${P().rounds.length > 1 ? `<button class="btn small ghost" data-move="-1" title="Поставить раунд раньше" aria-label="Раунд раньше">←</button><button class="btn small ghost" data-move="1" title="Поставить раунд позже" aria-label="Раунд позже">→</button><button class="btn small ghost" id="delRound">Удалить раунд</button>` : ""}</div>
     <textarea id="roundSubtitle" placeholder="Подзаголовок — краткое описание раунда, Enter — новая строка" aria-label="Подзаголовок раунда">${esc(cur.subtitle || "")}</textarea>
     <textarea id="roundRules" placeholder="Правила раунда — показываются на слайде его заставки" aria-label="Правила раунда">${esc(cur.rules)}</textarea>
@@ -727,7 +727,7 @@ function renderRounds() {
     <label class="field"><span>Фоновая музыка раунда — на слайдах заставки раунда и блока ответов</span>${musicField("roundMusic", cur.music)}</label>`;
   $$("#rounds [data-round]").forEach(b => b.onclick = () => { S.round = b.dataset.round; renderRounds(); renderTracksList(); showRoundPreview(); });
   $("#addRound").onclick = () => {
-    const r = { id: Math.random().toString(16).slice(2, 10), title: `Раунд ${P().rounds.length + 1}`, subtitle: "", rules: "" };
+    const r = { id: Math.random().toString(16).slice(2, 10), title: `Раунд ${P().rounds.length + 1}`, subtitle: "", rules: "", kind: "regular" };
     P().rounds.push(r); S.round = r.id;
     saveProject("rounds", P().rounds, { now: true }); renderRounds(); renderTracksList();
   };
@@ -766,8 +766,8 @@ function renderRounds() {
     curRound().gap = v >= 0 ? v : null;
     saveProject("rounds", P().rounds);
   });
-  $("#roundThree").addEventListener("change", e => {
-    curRound().three_tries = e.target.checked;
+  $("#roundKind").addEventListener("change", e => {
+    curRound().kind = e.target.value;
     saveProject("rounds", P().rounds, { now: true });
     showRoundPreview();
   });

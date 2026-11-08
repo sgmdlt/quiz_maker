@@ -197,14 +197,14 @@ class App:
                     return result
         return self.jobs.start("preview", slug, run, {"track_id": track_id})
 
-    def start_build(self, slug, limit=None, round_id=None, voice=True):
+    def start_build(self, slug, limit=None, round_id=None, narration="voiced"):
         if self.jobs.running(slug, "build"):
             raise q.QuizError("Сборка уже идёт")
 
         def run(job):
             return q.build(self.ws, slug, limit=limit, log=job.log.append, progress=job.set_progress,
-                           cancel=job.cancel, round_id=round_id, voice=voice)
-        return self.jobs.start("build", slug, run, {"limit": limit, "round": round_id, "voice": voice})
+                           cancel=job.cancel, round_id=round_id, narration=narration)
+        return self.jobs.start("build", slug, run, {"limit": limit, "round": round_id, "narration": narration})
 
     def start_sheet(self, slug):
         def run(job):
@@ -498,7 +498,7 @@ def start_job(h, slug, kind):
     else:
         limit = data.get("limit")
         job = app.start_build(slug, int(limit) if limit else None, data.get("round") or None,
-                              data.get("voice", True) is not False)
+                              "silent" if data.get("voice") is False else "voiced")
     h.send_json(job.to_dict())
 
 

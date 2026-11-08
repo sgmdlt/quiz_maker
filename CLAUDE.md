@@ -25,9 +25,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   `SpectrumRing.draw`). При gap = 0 кольцо прорисовывается уже под музыку. После ответа своя пауза
   `timing.answer_gap`: слайд держится без звука.
   Если у трека задан `start2`, вопрос состоит из двух отрывков по половине времени с паузой
-  `SPLIT_PAUSE` между ними (`cut` в `build`). Отсчёт идёт через всю цепочку, а `row["q_frames"]`
-  уже включает паузу. В интерфейсе `fragLen(t)` — длина одного окна на волне.
-- **Раунд «Три попытки»** (`round.three_tries`): каждые три подряд идущих трека раунда — один исполнитель
+  `SPLIT_PAUSE` между ними (`track_sound` в `scenario.py`). Отсчёт идёт через всю цепочку, длительность слайда
+  вопроса уже включает паузу. В интерфейсе `fragLen(t)` — длина одного окна на волне.
+- **Раунд «Три попытки»** (`round.kind = "three_tries"`, иначе `"regular"`; старый флаг `three_tries` переносит `normalize`): каждые три подряд идущих трека раунда — один исполнитель
   (`answer_groups`). Вопросы нумеруются «1.1, 1.2, 1.3, 2.1…» (`question_labels`), `{total}` — число исполнителей.
   Ответ — один слайд на исполнителя (`Renderer.answer_group_card`) сразу после его трёх вопросов, заставки «Ответы»
   в этом раунде нет. Сверху ответ/исполнитель первого трека, песни плавно проявляются по очереди (`group_frames`),
@@ -139,7 +139,11 @@ uv run cover.py <slug> [--port 8790]             # отдельный конст
 ## Архитектура
 
 - `make_quiz.py` — argparse-оболочка. `server.py` — тонкий HTTP-слой над теми же функциями.
-  Вся логика лежит в `quiz_core.py`: `Workspace` (пути, блокировки проекта, чтение и запись
+  `scenario.py` — сценарий ролика: чистая функция `build_scenario` возвращает список `Slide` (вид, кадры, подписи,
+  треки, части звука `Clip`/`Silence`/`Narration`/`VideoClip`, фоновая музыка, глава) и правила раунда
+  (`question_seconds`, `answer_groups`, `question_labels`…). Не читает файлы и не зовёт ffmpeg; длительность озвучки
+  приходит функцией. `build` по сценарию нарезает звук, рисует слайды (`render_slide`) и считает главы (`chapters`).
+  Остальная логика лежит в `quiz_core.py`: `Workspace` (пути, блокировки проекта, чтение и запись
   `project.json`), `parse_track_list`, `Renderer` (слайды на Pillow), `preview`, `answers_sheet`,
   `download_tracks`, `find_covers`, `build` + `VideoWriter` (pipe в ffmpeg).
 - Долгие функции ядра принимают `log`, `progress`, `cancel` (это `threading.Event`, при отмене
@@ -154,6 +158,14 @@ uv run cover.py <slug> [--port 8790]             # отдельный конст
   Если нарушить этот формат, параметр пропадёт из конструктора. В `project.json` в `visualizer`
   хранятся только изменённые параметры.
 - `youtube.py` и `covers.py` от ядра не зависят: yt-dlp через subprocess, Deezer/iTunes через urllib.
+
+## Правила кода
+
+- **Явные состояния вместо флагов.** Не `True/False` и не `has_x`/`is_x`, а значение с названием состояния:
+  `"pending" | "done" | "failed"`, `"quiz_intro" | "social_cover"`. Новое состояние тогда добавляется без второго флага
+  и без невозможных сочетаний. Старые флаги (`enabled`, `shuffle`, `cover_backdrop`…) переводятся, когда их трогают.
+- **Длинные ясные имена лучше коротких.** `rounds_list`, `social_cover`, а не `rounds`, `cover`, если короткое
+  можно спутать с другим понятием из `GLOSSARY.md`.
 
 ## Как проверять
 

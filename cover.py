@@ -49,7 +49,7 @@ def quiz_covers(ws, project):
     out = []
     for rd in project["rounds"]:
         tracks = [t for t in project["tracks"] if t["round"] == rd["id"] and t.get("enabled", True)]
-        for t in tracks[::3] if rd.get("three_tries") else tracks:
+        for t in tracks[::3] if rd.get("kind") == "three_tries" else tracks:
             path = track_cover(ws, t)
             if path and path not in out:
                 out.append(path)

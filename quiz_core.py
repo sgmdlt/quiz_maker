@@ -38,18 +38,31 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageColor, ImageDraw, ImageFilter, ImageFont, ImageOps
 
+import scenario as sc
 from covers import CoverFinder
+from scenario import (
+    FPS,
+    SAMPLE_RATE,
+    SAMPLES_PER_FRAME,
+    answer_groups,
+    fmt,
+    frames_for,
+    gap_seconds,
+    plural,
+    question_labels,
+    question_seconds,
+    round_side,
+    round_title,
+    rounds_card,
+    text_values,
+)
 from spectrum_ring import RingConfig, SpectrumRing, analyze, config_from_dict
 
 ROOT = Path(os.environ.get("QUIZ_HOME") or Path(__file__).resolve().parent)
 
-FPS = 30
-SAMPLE_RATE = 44100
-SAMPLES_PER_FRAME = SAMPLE_RATE // FPS  # 1470 — звук и картинка совпадают до сэмпла
 FADE_FRAMES = 8                          # плавный переход между экранами (~0.27 с)
 LOUDNESS = -14                           # целевая громкость, LUFS (как у YouTube)
 RENDER_THREADS = max(1, (os.cpu_count() or 2) // 2)  # потоки для кольца; остальное ядрам x264
-SPLIT_PAUSE = 1.0                        # пауза между двумя фрагментами вопроса, с
 
 
 class QuizError(Exception):
@@ -175,11 +188,7 @@ def new_track(**fields_):
 
 def new_round(n):
     # id постоянный: квиз без туров при каждом чтении получает один и тот же первый тур
-    return {"id": f"r{n}", "title": f"Раунд {n}", "subtitle": "", "rules": ""}
-
-
-def round_title(rnd, n):
-    return rnd["title"] or f"Раунд {n}"
+    return {"id": f"r{n}", "title": f"Раунд {n}", "subtitle": "", "rules": "", "kind": "regular"}
 
 
 def normalize(project):
@@ -189,6 +198,8 @@ def normalize(project):
     old_music = p.pop("music", "")  # раньше музыка была одна на весь квиз
     if old_music and not (p["intro_music"] or p["outro_music"]):
         p["intro_music"] = p["outro_music"] = old_music
+    for r in p["rounds"]:  # раньше вид раунда был флагом three_tries
+        r.setdefault("kind", "three_tries" if r.pop("three_tries", False) else "regular")
     ids = {r["id"] for r in p["rounds"]}
     for t in p["tracks"]:  # трек без тура (или тур удалён) — в первый тур
         if t["round"] not in ids:
@@ -230,35 +241,6 @@ def _apply_patch(p, set_, unset):
     return p
 
 
-def question_seconds(project, rnd):
-    """Время на вопрос: своё у тура или общее."""
-    return float(rnd.get("seconds") or project["timing"]["question"])
-
-
-def answer_seconds(project, rnd):
-    """Время на ответ: своё у тура или общее. В «Трёх попытках» — на каждую песню слайда."""
-    return float(rnd.get("answer_seconds") or project["timing"]["answer"])
-
-
-def gap_seconds(project, rnd):
-    """Пауза перед отсчётом вопроса: своя у тура (можно 0) или общая."""
-    return float(rnd["gap"] if rnd.get("gap") is not None else project["timing"]["gap"])
-
-
-def answer_groups(rnd, items):
-    """Группы на слайд ответа: в «Трёх попытках» по три подряд (один исполнитель), иначе по одному."""
-    k = 3 if rnd.get("three_tries") else 1
-    return [items[i:i + k] for i in range(0, len(items), k)]
-
-
-def question_labels(rnd, items):
-    """Номер каждого вопроса: 1, 2… или в «Трёх попытках» 1.1, 1.2, 1.3, 2.1…"""
-    groups = answer_groups(rnd, items)
-    if not rnd.get("three_tries"):
-        return [str(g) for g in range(1, len(groups) + 1)]
-    return [f"{g}.{j}" for g, grp in enumerate(groups, 1) for j in range(1, len(grp) + 1)]
-
-
 def group_rounds(project, rows):
     """[(тур, строки тура)] в порядке туров, пустые туры пропускаются."""
     groups = [(r, [row for row in rows if row["round"] == r["id"]]) for r in project["rounds"]]
@@ -266,37 +248,6 @@ def group_rounds(project, rows):
 
 
 # ───────────────────────── мелочи ─────────────────────────
-
-def plural(n, one, few, many):
-    n = abs(int(n)) % 100
-    if 11 <= n <= 14:
-        return many
-    n %= 10
-    return one if n == 1 else few if 2 <= n <= 4 else many
-
-
-class _SafeDict(dict):
-    def __missing__(self, key):
-        return "{" + key + "}"
-
-
-def fmt(template, **values):
-    try:
-        return (template or "").format_map(_SafeDict(values))
-    except (ValueError, IndexError):
-        return template or ""
-
-
-def text_values(count, seconds, n=None, total=None, round="", round_n=""):
-    sec = float(seconds)
-    sec_txt = f"{sec:g}"
-    return {
-        "n": n if n is not None else "", "total": total if total is not None else count, "count": count,
-        "songs": f"{count} {plural(count, 'песня', 'песни', 'песен')}",
-        "seconds": f"{sec_txt} {plural(int(sec), 'секунда', 'секунды', 'секунд') if sec == int(sec) else 'секунды'}",
-        "round": round, "round_n": round_n,
-    }
-
 
 def parse_time(value):
     s = str(value if value is not None else "").strip().replace(",", ".")
@@ -1202,16 +1153,6 @@ def group_answer(rows):
     return (rows[0].get("answer") or rows[0].get("artist") or "").replace("\n", ", ")
 
 
-def round_side(texts, vals):
-    """Подпись тура слева сверху на вопросах и ответах: («РАУНД 1», название)."""
-    return fmt(texts["round_label"], **vals), vals["round"].strip()
-
-
-def rounds_card(project):
-    """Названия туров для слайда со списком (без номеров)."""
-    return [r["title"].strip() for r in project["rounds"]]
-
-
 def ring_config(project):
     try:
         return config_from_dict(project.get("visualizer") or {}, "визуализаторе")
@@ -1607,7 +1548,7 @@ def preview(ws, slug, track_id=None, log=print):
     out_dir.mkdir(parents=True, exist_ok=True)
     round_vals = text_values(len(in_round) or 1, question_seconds(project, rnd), round=rnd["title"],
                              round_n=project["rounds"].index(rnd) + 1)
-    if rnd.get("three_tries"):  # всего — исполнителей
+    if rnd["kind"] == "three_tries":  # всего — исполнителей
         round_vals["total"] = len(answer_groups(rnd, in_round)) or 1
     label_vals = dict(round_vals, n=index)
     group_vals = dict(round_vals, n=pos // 3 + 1)
@@ -1627,7 +1568,7 @@ def preview(ws, slug, track_id=None, log=print):
         "question": r.question_frame(base, levels, pre + int(q_frames * 0.55), q_frames, pre_frames=pre),
         "answers": r.title_card(fmt(texts["answers_title"], **round_vals), fmt(texts["answers_subtitle"], **round_vals)),
         "answer": (group_preview(ws, project, r, fmt(texts["answer_label"], **group_vals), rnd, in_round, pos,
-                                 round_side(texts, group_vals)) if rnd.get("three_tries") else
+                                 round_side(texts, group_vals)) if rnd["kind"] == "three_tries" else
                    answer_preview(ws, r, fmt(texts["answer_label"], **label_vals), row, round_side(texts, label_vals))),
         "outro": r.title_card(fmt(texts["outro_title"], **vals), fmt(texts["outro_subtitle"], **vals)),
     }
@@ -1735,18 +1676,44 @@ def group_frames(cards, starts, n_frames, fade=GROUP_FADE):
             yield Image.blend(cards[k - 1], cards[k], 1 - (1 - t) ** 3)
 
 
-def frames_for(seconds):
-    return max(1, round(float(seconds) * FPS))
+def render_slide(renderer, slide, audio, social_cover, videos):
+    """Кадры слайда по его описанию: картинка или поток кадров для VideoWriter.segment."""
+    t = slide.texts
+    side = (t.get("round_label", ""), t.get("round_title", ""))
+    if slide.kind == "social_cover":
+        return ImageOps.fit(social_cover, (renderer.W, renderer.H))
+    if slide.kind == "quiz_intro":
+        return renderer.title_card(t["title"], t["subtitle"], 8)
+    if slide.kind == "rounds_list":
+        return renderer.rounds_list(t["titles"])
+    if slide.kind == "round_intro":
+        return renderer.round_card(t["title"], t["subtitle"], t["rules"])
+    if slide.kind in ("answers_intro", "outro"):
+        return renderer.title_card(t["title"], t["subtitle"])
+    if slide.kind == "question":
+        base = renderer.question_base(t["label"], t["prompt"], t["hint"], side)
+        levels = analyze(audio.mean(axis=1), SAMPLE_RATE, slide.frames, FPS, renderer.ring.cfg)
+        return renderer.question_frames(base, levels, slide.frames - slide.lead_frames, slide.lead_frames)
+    if slide.kind == "triple_answer":
+        rows = list(slide.tracks)
+        cards = [renderer.answer_group_card(t["label"], rows, k + 1, side) for k in range(len(rows))]
+        starts = np.cumsum([0, *slide.track_frames[:-1]])
+        return group_frames(cards, starts, slide.frames)
+    row = slide.tracks[0]  # answer
+    if row["answer_video"]:
+        overlay = renderer.answer_overlay(t["label"], row, side)
+        return renderer.video_answer_frames(*videos[row["answer_video"]], overlay, slide.frames)
+    return renderer.answer_card(t["label"], row, side)
 
 
-def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=None, voice=True):
+def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=None, narration="voiced"):
     """Собирает видео. Возвращает пути к видео, обложке ролика и описанию.
-    round_id (id или название тура) — пробный ролик только из этого тура, без общей заставки и финала.
-    voice=False — без озвучки заставок (например, когда сервис голоса недоступен)."""
+    round_id (id или название раунда) — пробный ролик только из этого раунда, без общей заставки и финала.
+    narration — "voiced" | "silent" (без озвучки заставок, например, когда сервис голоса недоступен)."""
     started = time.time()
     progress = progress or (lambda frac, stage: None)
     project = ws.load(slug)
-    if not voice:
+    if narration == "silent":
         project["voice"] = ""
     timing, texts = project["timing"], project["texts"]
     if timing["question"] <= 0 or timing["answer"] <= 0:
@@ -1764,42 +1731,11 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         if not rows:
             raise QuizError(f"В раунде «{rnd['title']}» нет включённых треков")
     rounds = group_rounds(project, rows)
-    if limit:  # пробный ролик — первые N вопросов каждого тура
+    if limit:  # пробный ролик — первые N вопросов каждого раунда
         rounds = [(rnd, rs[:int(limit)]) for rnd, rs in rounds]
     rows = [row for _, rs in rounds for row in rs]
-    for rnd, rs in rounds:
-        for row in rs:
-            row["q_frames"] = frames_for(question_seconds(project, rnd))
-            row["a_frames"] = frames_for(answer_seconds(project, rnd))
-            row["gap_frames"] = round(gap_seconds(project, rnd) * FPS)
-            if row["start2"] is not None:  # два фрагмента по половине + пауза между ними
-                row["q_frames"] += frames_for(SPLIT_PAUSE)
     renderer = make_renderer(ws, project)
-    ring_cfg = renderer.ring.cfg
-
     n = len(rows)
-    vals = text_values(n, timing["question"])
-    intro = (fmt(texts["intro_title"], **vals), fmt(texts["intro_subtitle"], **vals), 8)
-    outro = (fmt(texts["outro_title"], **vals), fmt(texts["outro_subtitle"], **vals))
-
-    answer_gap_frames = round(timing["answer_gap"] * FPS)  # пауза после каждого ответа
-
-    def card_frames(key, title):  # пустой заголовок или нулевая длительность — экрана нет
-        return frames_for(timing[key]) if timing[key] > 0 and title else 0
-
-    def add_card(key, card, narration="", music="", shown=None, image=None):
-        """narration — что читает диктор (экран держится, пока он не дочитает), music — фоновая музыка,
-        image — готовая картинка экрана вместо заставки из card."""
-        frames, audio = card_frames(key, card[0] if shown is None else shown), None
-        if not frames:
-            return
-        if narration.strip() and project["voice"]:
-            lead = np.zeros((round(0.4 * SAMPLE_RATE), 2), dtype=np.float32)
-            audio = np.concatenate([lead, speech(ws, project["voice"], narration)])
-            frames = max(frames, frames_for(len(audio) / SAMPLE_RATE + 1))
-        if music:
-            beds[len(timeline)] = music
-        timeline.append(("card", frames, audio, image if image is not None else renderer.title_card(*card)))
 
     out_dir = ws.project_dir(slug) / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1807,8 +1743,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     cover_file = ws.project_dir(slug) / "cover.png"
     out = out_dir / f"{stem}.mp4"
 
-    # 1. Обложки
-    progress(0.0, "Ищу обложки")
+    # 1. Обложки альбомов
+    progress(0.0, "Ищу обложки альбомов")
     finder = cover_finder(ws, project)
     results = finder.find_all(rows)
     apply_covers(rows, results)
@@ -1819,122 +1755,66 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
     if cancel is not None and cancel.is_set():
         raise Cancelled()
 
-    # 2. Отрывки (параллельно)
+    # 2. Сценарий
+    log("Озвучиваю заставки…" if project["voice"] else "Собираю сценарий…")
+    speeches = {}
+
+    def narration_audio(text):
+        if text not in speeches:
+            speeches[text] = speech(ws, project["voice"], text)
+        return speeches[text]
+
+    opening = "social_cover" if cover_file.is_file() and timing["cover"] > 0 else "quiz_intro"
+    slides = sc.build_scenario(project, rounds, lambda text: len(narration_audio(text)) / SAMPLE_RATE,
+                               opening, "round_trial" if round_id else "whole_quiz")
+    if cancel is not None and cancel.is_set():
+        raise Cancelled()
+
+    # 3. Отрывки (параллельно) и видео ответов
     progress(0.02, "Нарезаю отрывки")
     log("Нарезаю отрывки…")
-    def cut(r):
-        """(звук вопроса, отрывок для ответа, где в нём кончается вопрос)"""
-        q_samples = r["q_frames"] * SAMPLES_PER_FRAME
-        a_samples = r["a_frames"] * SAMPLES_PER_FRAME
-        if r["start2"] is None:
-            frag = extract_fragment(r["path"], r["start"], q_samples + a_samples)
-            return with_fades(frag[:q_samples], 0.1, 0.6), frag, q_samples
-        half = (r["q_frames"] - frames_for(SPLIT_PAUSE)) // 2 * SAMPLES_PER_FRAME
-        frag = extract_fragment(r["path"], r["start"], half + a_samples)
-        second = extract_fragment(r["path"], r["start2"], half)
-        pause = np.zeros((q_samples - 2 * half, 2), dtype=np.float32)
-        return (np.concatenate([with_fades(frag[:half], 0.1, 0.4), pause, with_fades(second, 0.1, 0.6)]),
-                frag, half)
-
+    windows = list(dict.fromkeys((c.path, c.start, c.window) for s in slides for c in s.sound
+                                 if isinstance(c, sc.Clip)))
     with ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
-        fragments = list(pool.map(cut, rows))
+        cut = dict(zip(windows, pool.map(lambda w: extract_fragment(*w), windows)))
     if cancel is not None and cancel.is_set():
         raise Cancelled()
 
     import youtube
 
-    videos = {}  # номер строки → (файл, начало)
-    for i, row in enumerate(rows):
-        if row["answer_video"]:
-            log(f"Скачиваю видео для ответа: {row['answer_video']}")
-            videos[i] = (answer_video_file(ws, row["answer_video"]), youtube.parse_url(row["answer_video"])[1] or 0)
+    videos = {}  # ссылка → (файл, начало)
+    for url in dict.fromkeys(s.tracks[0]["answer_video"] for s in slides if s.kind == "answer"):
+        if url:
+            log(f"Скачиваю видео для ответа: {url}")
+            videos[url] = (answer_video_file(ws, url), youtube.parse_url(url)[1] or 0)
 
-    def answer_audio(row, frag, q_samples):
-        mode = project["answer_audio"]
-        a_samples = row["a_frames"] * SAMPLES_PER_FRAME
-        fade = min(1.0, a_samples / SAMPLE_RATE / 3)
-        if mode == "replay":
-            return with_fades(frag[:a_samples], 0.15, fade)
-        if mode == "continue":
-            return with_fades(frag[q_samples:q_samples + a_samples], 0.3, fade)
-        return None
+    def part_audio(part):
+        if isinstance(part, sc.Clip):
+            win = cut[(part.path, part.start, part.window)]
+            return with_fades(win[part.offset:part.offset + part.samples], part.fade_in, part.fade_out)
+        if isinstance(part, sc.Silence):
+            return np.zeros((part.samples, 2), dtype=np.float32)
+        if isinstance(part, sc.Narration):
+            return narration_audio(part.text)
+        return with_fades(extract_fragment(*videos[part.url], part.samples), part.fade_in, part.fade_out)
 
-    # 3. Сценарий
-    timeline = []  # (вид, кадров, звук, данные)
-    beds = {}  # номер сегмента → фоновая музыка экрана
-    chapters_at = {}  # номер сегмента → глава в описании
-    log("Озвучиваю заставки…" if project["voice"] else "Собираю сценарий…")
-    if not round_id:
-        greeting = fmt(texts["intro_narration"], **vals) or "\n".join(intro[:2])
-        if cover_file.is_file() and timing["cover"] > 0:  # обложка из cover.py вместо заставки квиза
-            add_card("cover", ("cover",), greeting, project["intro_music"],
-                     image=ImageOps.fit(Image.open(cover_file).convert("RGB"), (renderer.W, renderer.H)))
-        else:
-            add_card("intro", intro, greeting, project["intro_music"])
-        titles = "\n".join(rounds_card(project))
-        add_card("rounds", ("",), fmt(texts["rounds_narration"], **vals) or titles, project["intro_music"], titles,
-                 renderer.rounds_list(rounds_card(project)))
-    first = 0
-    for k, (rnd, rs) in enumerate(rounds, start=1):
-        rv = text_values(len(rs), question_seconds(project, rnd), round=rnd["title"],
-                         round_n=project["rounds"].index(rnd) + 1)
-        labels = question_labels(rnd, rs)
-        groups = answer_groups(rnd, list(range(first, first + len(rs))))
-        if rnd.get("three_tries"):  # «Вопрос 1.2 из 5»: всего — исполнителей
-            rv["total"] = len(groups)
-        idx = list(zip(labels, range(first, first + len(rs))))
-        first += len(rs)
-        chapters_at[len(timeline)] = round_title(rnd, k)
-        subtitle, rules = fmt(rnd.get("subtitle") or "", **rv), fmt(rnd["rules"], **rv)
-        narration = fmt(rnd.get("narration") or "", **rv) or "\n".join(p for p in (rnd["title"], subtitle, rules) if p)
-        add_card("round", (rnd["title"], subtitle, rules), narration, rnd.get("music", ""),
-                 image=renderer.round_card(rnd["title"], subtitle, rules))
-        qn = {i: n for n, i in idx}
-
-        def add_question(i):
-            pause = rows[i]["gap_frames"]  # пауза перед отсчётом
-            audio = np.concatenate([np.zeros((pause * SAMPLES_PER_FRAME, 2), dtype=np.float32), fragments[i][0]])
-            timeline.append(("question", pause + rows[i]["q_frames"], audio, (i, dict(rv, n=qn[i]))))  # noqa: B023 (вызывается в том же витке цикла)
-
-        if rnd.get("three_tries"):  # после каждых трёх вопросов — слайд исполнителя, песни под свои отрывки
-            for g, group in enumerate(groups, start=1):
-                for i in group:
-                    add_question(i)
-                parts = [answer_audio(rows[i], *fragments[i][1:]) for i in group]
-                audio = None if parts[0] is None else np.concatenate(parts)
-                frames = sum(rows[i]["a_frames"] for i in group) + answer_gap_frames
-                timeline.append(("group", frames, audio, (group, dict(rv, n=g))))
-            continue
-        for _, i in idx:
-            add_question(i)
-        card = (fmt(texts["answers_title"], **rv), fmt(texts["answers_subtitle"], **rv))
-        chapters_at[len(timeline)] = card[0] or f"Ответы · {round_title(rnd, k)}"
-        add_card("answers_card", card, fmt(texts["answers_narration"], **rv), rnd.get("music", ""))
-        for qn, i in idx:
-            row = rows[i]
-            audio = answer_audio(row, *fragments[i][1:])
-            if i in videos:
-                fade = min(1.0, row["a_frames"] / FPS / 3)
-                audio = with_fades(extract_fragment(*videos[i], row["a_frames"] * SAMPLES_PER_FRAME), 0.15, fade)
-            timeline.append(("answer", row["a_frames"] + answer_gap_frames, audio, (i, dict(rv, n=qn))))
-    if not round_id:
-        add_card("outro", outro, fmt(texts["outro_narration"], **vals), project["outro_music"])
-    # фоновая музыка: подряд идущие экраны с одной музыкой звучат без перерыва
-    for music, group in itertools.groupby(range(len(timeline)), key=beds.get):
+    audios = [np.concatenate([part_audio(p) for p in s.sound]) if s.sound else None for s in slides]
+    # фоновая музыка: подряд идущие слайды с одной музыкой звучат без перерыва
+    for music, group in itertools.groupby(range(len(slides)), key=lambda k: slides[k].music):
         if not music:
             continue
         ks = list(group)
-        lens = [timeline[k][1] * SAMPLES_PER_FRAME for k in ks]
+        lens = [slides[k].frames * SAMPLES_PER_FRAME for k in ks]
         bed = with_fades(music_audio(ws, music, sum(lens)), 0.5, 1.5) * float(project["music_volume"])
         for k, part in zip(ks, np.split(bed, np.cumsum(lens)[:-1])):
-            kind, frames, voice, data = timeline[k]
-            if voice is not None:
-                part[:len(voice)] += voice
-            timeline[k] = (kind, frames, part, data)
-    total_frames = sum(seg[1] for seg in timeline)
+            if audios[k] is not None:
+                part[:len(audios[k])] += audios[k][:len(part)]
+            audios[k] = part
+    total_frames = sum(s.frames for s in slides)
     log(f"Квиз: {n} {plural(n, 'трек', 'трека', 'треков')}, видео {fmt_ts(total_frames / FPS)}, "
         f"{renderer.W}x{renderer.H}")
 
+    social_cover = Image.open(cover_file).convert("RGB") if opening == "social_cover" else None
     with tempfile.TemporaryDirectory(prefix="quiz_") as tmp:
         # 4. Звуковая дорожка, точно по кадрам
         audio_path = Path(tmp) / "audio.wav"
@@ -1942,8 +1822,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
             w.setnchannels(2)
             w.setsampwidth(2)
             w.setframerate(SAMPLE_RATE)
-            for _, frames_n, audio, _ in timeline:
-                n_s = frames_n * SAMPLES_PER_FRAME
+            for slide, audio in zip(slides, audios):
+                n_s = slide.frames * SAMPLES_PER_FRAME
                 chunk = np.zeros((n_s, 2), dtype=np.float32)
                 if audio is not None:
                     chunk[:min(n_s, len(audio))] = audio[:n_s]
@@ -1971,31 +1851,8 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
 
         writer = VideoWriter(proc, cancel, on_frame)
         try:
-            for kind, frames_n, audio, data in timeline:
-                if kind == "card":
-                    writer.segment(data, frames_n)
-                elif kind == "question":
-                    i, lv = data
-                    row = rows[i]
-                    base = renderer.question_base(fmt(texts["question_label"], **lv),
-                                                  fmt(row["question"] or texts["prompt"], **lv), row["hint"],
-                                                  round_side(texts, lv))
-                    levels = analyze(audio.mean(axis=1), SAMPLE_RATE, frames_n, FPS, ring_cfg)
-                    writer.segment(renderer.question_frames(base, levels, row["q_frames"], row["gap_frames"]), frames_n)
-                elif kind == "group":
-                    group, lv = data
-                    cards = [renderer.answer_group_card(fmt(texts["answer_label"], **lv), [rows[i] for i in group],
-                                                        k + 1, round_side(texts, lv)) for k in range(len(group))]
-                    starts = np.cumsum([0] + [rows[i]["a_frames"] for i in group[:-1]])
-                    writer.segment(group_frames(cards, starts, frames_n), frames_n)
-                elif data[0] in videos:
-                    i, lv = data
-                    overlay = renderer.answer_overlay(fmt(texts["answer_label"], **lv), rows[i], round_side(texts, lv))
-                    writer.segment(renderer.video_answer_frames(*videos[i], overlay, frames_n), frames_n)
-                else:
-                    i, lv = data
-                    writer.segment(renderer.answer_card(fmt(texts["answer_label"], **lv), rows[i],
-                                                        round_side(texts, lv)), frames_n)
+            for slide, audio in zip(slides, audios):
+                writer.segment(render_slide(renderer, slide, audio, social_cover, videos), slide.frames)
             proc.stdin.close()
             err = proc.stderr.read().decode(errors="replace")
             if proc.wait() != 0:
@@ -2007,27 +1864,23 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
             raise
         os.replace(partial, out)
 
-    # 6. Обложка для YouTube и текст описания с таймкодами
-    progress(0.99, "Готовлю обложку и описание")
+    # 6. Значок YouTube и текст описания с таймкодами
+    progress(0.99, "Готовлю значок и описание")
     thumb = out_dir / f"{stem}_thumbnail.jpg"
-    if cover_file.is_file():  # обложка из cover.py; JPEG 1280×720 укладывается в лимит YouTube
+    intro_title = fmt(texts["intro_title"], **text_values(n, timing["question"]))
+    intro_subtitle = fmt(texts["intro_subtitle"], **text_values(n, timing["question"]))
+    if cover_file.is_file():  # обложка для соцсетей; JPEG 1280×720 укладывается в лимит YouTube
         ImageOps.fit(Image.open(cover_file).convert("RGB"), (1280, 720)).save(thumb, quality=90)
     else:
-        Renderer(1280, 720, project["style"], renderer.fonts, ring_cfg,
-                 background=ws.resolve(project["style"].get("background"))).title_card(intro[0]).save(thumb, quality=92)
+        Renderer(1280, 720, project["style"], renderer.fonts, renderer.ring.cfg,
+                 background=ws.resolve(project["style"].get("background"))).title_card(intro_title).save(thumb, quality=92)
 
-    desc_lines = [f"{intro[0]}!"] + ([intro[1]] if intro[1] else []) + [""]
-    t, chapters = 0.0, []
-    for seg, (_, frames_n, _, _) in enumerate(timeline):
-        if seg in chapters_at:
-            chapters.append((t, chapters_at[seg]))
-        t += frames_n / FPS
-    chapters[0] = (0.0, chapters[0][1])  # YouTube: первая глава с 0:00
-    desc_lines += [f"{fmt_ts(ts)} {name}" for ts, name in chapters] + ["", "Ответы:"]
+    desc_lines = [f"{intro_title}!"] + ([intro_subtitle] if intro_subtitle else []) + [""]
+    desc_lines += [f"{fmt_ts(ts)} {name}" for ts, name in sc.chapters(slides)] + ["", "Ответы:"]
     for k, (rnd, rs) in enumerate(rounds, start=1):
         if len(rounds) > 1:
             desc_lines.append(round_title(rnd, k))
-        if rnd.get("three_tries"):
+        if rnd["kind"] == "three_tries":
             desc_lines += [f"{g}. {group_answer(grp)} — {', '.join(r['title'] for r in grp)}"
                            for g, grp in enumerate(answer_groups(rnd, rs), start=1)]
         else:
