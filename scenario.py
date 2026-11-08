@@ -55,6 +55,7 @@ class Slide:
     sound: tuple = ()   # части звука по порядку: Clip, Silence, Narration, VideoClip
     music: str = ""     # фоновая музыка слайда
     chapter: str = ""   # глава в описании YouTube, которую открывает этот слайд
+    round_id: str = ""  # раунд, к которому относится слайд; у общих слайдов квиза пусто
     lead_frames: int = 0     # вопрос: пауза перед отсчётом, кольцо полное, звука нет
     track_frames: tuple = ()  # ответ на тройку вопросов: кадров на каждую песню
 
@@ -152,13 +153,13 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
     rounds — [(раунд, его треки)] после отбора; opening — "quiz_intro" | "social_cover";
     scope — "whole_quiz" | "round_trial" (пробный раунд без заставки квиза, списка раундов и финала)."""
     timing, texts = project["timing"], project["texts"]
-    slides, chapter = [], [""]
+    slides, chapter, current_round = [], [""], [""]
     answer_gap = round(timing["answer_gap"] * FPS)  # пауза после каждого ответа
 
     def add(slide):
         if chapter[0]:
             slide, chapter[0] = replace(slide, chapter=chapter[0]), ""
-        slides.append(slide)
+        slides.append(replace(slide, round_id=current_round[0]))
 
     def intro_slide(key, kind, slide_texts, shown, narration="", music=""):
         """Слайд заставки. Пустой заголовок (shown) или нулевая длительность — слайда нет.
@@ -209,6 +210,7 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
 
     for k, (rnd, tracks) in enumerate(rounds, start=1):
         three_tries = is_three_tries(rnd)
+        current_round[0] = rnd["id"]
         q_base, a_frames = frames_for(question_seconds(project, rnd)), frames_for(answer_seconds(project, rnd))
         gap = round(gap_seconds(project, rnd) * FPS)
         rv = text_values(len(tracks), question_seconds(project, rnd), round=rnd["title"],
@@ -259,6 +261,7 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
             slide_texts, _ = side_texts(label, "answer_label")
             add(Slide("answer", a_frames + answer_gap, slide_texts, (track,), a_sound))
 
+    current_round[0] = ""
     if scope == "whole_quiz":
         outro = {"title": fmt(texts["outro_title"], **vals), "subtitle": fmt(texts["outro_subtitle"], **vals)}
         intro_slide("outro", "outro", outro, outro["title"], fmt(texts["outro_narration"], **vals), project["outro_music"])

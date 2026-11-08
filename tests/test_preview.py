@@ -25,3 +25,12 @@ def test_preview_skips_slide_missing_from_video():
     picked = qc.preview_slides(p, rows, rows[0], "quiz_intro")
     assert "outro" not in picked
     assert picked["answers"].texts["title"] == "Ответы · Хиты"
+
+
+def test_preview_does_not_borrow_slides_of_another_round():
+    p = qc.normalize({"voice": "", "rounds": [{"id": "r1", "title": "Хиты", "rules": ""},
+                                              {"id": "r2", "title": "", "rules": ""}]})  # без заставки раунда
+    rows = [_track("a", "r1"), _track("b", "r2")]
+    picked = qc.preview_slides(p, rows, rows[1], "quiz_intro")
+    assert "round" not in picked
+    assert picked["answers"].texts["title"] == "Ответы · "
