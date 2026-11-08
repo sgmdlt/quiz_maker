@@ -332,7 +332,7 @@ dialog pre { background: var(--bg); padding: 10px 12px; border-radius: var(--r-s
 <div class="layout" id="layout" hidden>
   <main id="main"></main>
   <aside class="preview" id="preview">
-    <div class="pv-frame"><img id="pvImg" alt="Кадр предпросмотра"><span class="busy" id="pvBusy" hidden>рисую…</span></div>
+    <div class="pv-frame"><img id="pvImg" alt="Кадр предпросмотра"><span class="busy" id="pvNone" hidden>Слайда не будет в ролике</span><span class="busy" id="pvBusy" hidden>рисую…</span></div>
     <div class="pv-thumbs" id="pvThumbs"></div>
     <div class="pv-names" id="pvNames"></div>
     <div class="pv-caption">
@@ -1564,10 +1564,9 @@ const PV = [["intro", "Заставка"], ["rounds", "Раунды"], ["round",
 function renderPreviewPanel() {
   const im = S.pv.images, v = S.pv.version;
   $("#pvThumbs").classList.toggle("vertical", P().format === "vertical");
-  $("#pvThumbs").innerHTML = PV.map(([k, l]) => `<button data-pv="${k}" aria-pressed="${k === S.pv.name}" title="${l}">${im ? `<img src="${media(im[k])}?v=${v}" alt="">` : ""}</button>`).join("");
+  $("#pvThumbs").innerHTML = PV.map(([k, l]) => `<button data-pv="${k}" aria-pressed="${k === S.pv.name}" title="${l}">${im?.[k] ? `<img src="${media(im[k])}?v=${v}" alt="">` : ""}</button>`).join("");
   $("#pvNames").innerHTML = PV.map(([, l]) => `<span>${l}</span>`).join("");
-  const img = $("#pvImg");
-  if (im) img.src = `${media(im[S.pv.name])}?v=${v}`; else img.removeAttribute("src");
+  showPvImage(S.pv.name);
   const t = S.pv.track && trackById(S.pv.track);
   $("#pvTrack").textContent = t ? `Трек: ${t.title || t.url}` : P().tracks.length ? "" : "Пример без трека";
   $("#pvAuto").checked = S.pv.auto;
@@ -1576,7 +1575,13 @@ $("#pvThumbs").addEventListener("click", e => { const b = e.target.closest("[dat
 function showPreview(name) {
   S.pv.name = name; store.set("pvName", name);
   $$("#pvThumbs [data-pv]").forEach(b => b.setAttribute("aria-pressed", b.dataset.pv === name));
-  if (S.pv.images) $("#pvImg").src = `${media(S.pv.images[name])}?v=${S.pv.version}`;
+  showPvImage(name);
+}
+// слайда нет в ролике (пустой заголовок, нулевая длительность) — сервер его не рисует
+function showPvImage(name) {
+  const img = $("#pvImg"), src = S.pv.images?.[name];
+  if (src) img.src = `${media(src)}?v=${S.pv.version}`; else img.removeAttribute("src");
+  $("#pvNone").hidden = !S.pv.images || !!src;
 }
 function setPreviewTrack(id, screen) {
   const changed = S.pv.track !== id;

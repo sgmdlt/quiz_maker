@@ -46,15 +46,9 @@ from scenario import (
     SAMPLES_PER_FRAME,
     answer_groups,
     fmt,
-    frames_for,
-    gap_seconds,
     is_three_tries,
     plural,
-    question_labels,
-    question_seconds,
-    round_side,
     round_title,
-    round_titles,
     text_values,
 )
 from spectrum_ring import RingConfig, SpectrumRing, analyze, config_from_dict
@@ -1510,69 +1504,91 @@ def _fake_levels(n_frames, n_bars, seed=3):
     return np.clip(base[None, :] * pulse[:, None] * 1.3, 0, 1)
 
 
+def preview_slides(project, rows, track, opening):
+    """Слайды сценария, которые показывает предпросмотр: {имя: Slide}. Слайда, которого не будет в ролике, нет."""
+    slides = sc.build_scenario(project, group_rounds(project, rows), lambda text: 0.0, opening, "whole_quiz")
+    q = next(i for i, s in enumerate(slides) if s.kind == "question" and s.tracks[0] is track)
+    picked = {"question": slides[q]}
+    for s in slides:
+        if s.kind in ("social_cover", "quiz_intro"):
+            picked["intro"] = s
+        elif s.kind in ("rounds_list", "outro"):
+            picked["rounds" if s.kind == "rounds_list" else "outro"] = s
+    round_intro = next((s for s in reversed(slides[:q]) if s.kind == "round_intro"), None)
+    after = slides[q:]
+    end = next((i for i, s in enumerate(after) if s.kind == "round_intro"), len(after))
+    answers_intro = next((s for s in after[:end] if s.kind == "answers_intro"), None)  # блок ответов этого раунда
+    picked |= {name: s for name, s in (("round", round_intro), ("answers", answers_intro)) if s}
+    picked["answer"] = next(s for s in after if s.kind in ("answer", "triple_answer") and track in s.tracks)
+    return picked
+
+
+def _question_levels(r, slide):
+    """Спектр отрывков вопроса; без скачанного трека — заглушка."""
+    parts = []
+    for part in slide.sound:
+        if isinstance(part, sc.Clip):
+            if not (part.path and Path(part.path).is_file()):
+                return _fake_levels(slide.frames, r.ring.n_bars)
+            win = extract_fragment_cached(part.path, part.start, part.window)
+            parts.append(with_fades(win[part.offset:part.offset + part.samples], part.fade_in, part.fade_out))
+        else:
+            parts.append(np.zeros((part.samples, 2), dtype=np.float32))
+    return analyze(np.concatenate(parts).mean(axis=1), SAMPLE_RATE, slide.frames, FPS, r.ring.cfg)
+
+
 def preview(ws, slug, track_id=None, log=print):
-    """Кадры всех экранов в projects/<имя>/output/preview/. Возвращает {экран: путь}."""
+    """Кадры слайдов в projects/<имя>/output/preview/. Возвращает {слайд: путь}."""
+    import youtube
+
     project = ws.load(slug)
     r = make_renderer(ws, project)
-    timing, texts = project["timing"], project["texts"]
     cover_file = ws.project_dir(slug) / "cover.png"
     enabled = [t for t in project["tracks"] if t.get("enabled", True)]
-    count = len(enabled) or 1
-    vals = text_values(count, timing["question"])
-
-    track =next((t for t in enabled if t["id"] == track_id), None) or \
+    track = next((t for t in enabled if t["id"] == track_id), None) or \
         next((t for t in enabled if ws.resolve(t.get("file")) and ws.resolve(t["file"]).is_file()), None) or \
         (enabled[0] if enabled else None)
-    rnd = next((r for r in project["rounds"] if track and r["id"] == track["round"]), project["rounds"][0])
-    in_round = [t for t in enabled if t["round"] == rnd["id"]]
-    q_frames = frames_for(question_seconds(project, rnd))
-    pos = in_round.index(track) if track else 0
-    index = question_labels(rnd, in_round or [None])[pos]
-    row = {"title": "Название песни", "artist": "Исполнитель", "album": "Альбом", "year": "2004", "hint": ""}
-    levels = None
+    rows = prepare_rows_loose(ws, {"tracks": enabled})
+    for row, t in zip(rows, enabled):
+        row |= {"start": float(t["start"] or 0), "start2": t["start2"], "hint": t["hint"],
+                "title": row["title"] or "Название песни", "artist": row["artist"] or "Исполнитель"}
+    if not rows:  # пример без треков
+        rows = [{"id": "", "round": project["rounds"][0]["id"], "path": None, "start": 0.0, "start2": None, "hint": "",
+                 "title": "Название песни", "artist": "Исполнитель", "album": "Альбом", "year": "2004",
+                 "question": "", "answer": "", "answer_video": "", "video_source": "", "cover": None, "thumb": None}]
+    row = next((x for x in rows if track and x["id"] == track["id"]), rows[0])
+    opening = "social_cover" if cover_file.is_file() and project["timing"]["cover"] > 0 else "quiz_intro"
+    picked = preview_slides(project, rows, row, opening)
     if track:
-        row = prepare_rows_loose(ws, {"tracks": [track]})[0]
-        row["hint"] = track["hint"]
-        row["title"] = row["title"] or "Название песни"
-        row["artist"] = row["artist"] or "Исполнитель"
-        path = row["path"]
-        if path and path.is_file():
-            audio = extract_fragment_cached(path, float(track["start"] or 0), q_frames * SAMPLES_PER_FRAME)
-            audio = with_fades(audio, 0.1, 0.6)
-            levels = analyze(audio.mean(axis=1), SAMPLE_RATE, q_frames, FPS, r.ring.cfg)
-        info = cover_finder(ws, project).find(row)
-        apply_covers([row], [info])
-    if levels is None:
-        levels = _fake_levels(q_frames, r.ring.n_bars)
+        answer_rows = list(picked["answer"].tracks)
+        apply_covers(answer_rows, cover_finder(ws, project).find_all(answer_rows))
+    social_cover = Image.open(cover_file).convert("RGB") if opening == "social_cover" else None
+    videos = {u: (answer_video_file(ws, u), youtube.parse_url(u)[1] or 0) for u in [row["answer_video"]] if u}
+
+    q = picked.pop("question")
+    lead, q_frames = q.lead_frames, q.frames - q.lead_frames
+    t = q.texts
+    base = r.question_base(t["label"], t["prompt"], t["hint"], (t["round_label"], t["round_title"]))
+    levels = _question_levels(r, q)
+    reveal_s = min(r.ring.cfg.reveal_seconds, lead / FPS) if lead else r.ring.cfg.reveal_seconds
+    images = {
+        "reveal": r.question_frame(base, levels, min(lead + q_frames - 1, int(reveal_s * FPS * 0.45)), q_frames,
+                                   pre_frames=lead),
+        "question": r.question_frame(base, levels, lead + int(q_frames * 0.55), q_frames, pre_frames=lead),
+    }
+    for name, slide in picked.items():
+        if slide.kind == "triple_answer":  # все песни тройки сразу
+            a = slide.texts
+            img = r.answer_group_card(a["label"], list(slide.tracks), len(slide.tracks),
+                                      (a["round_label"], a["round_title"]))
+        else:
+            img = render_slide(r, slide, None, social_cover, videos)
+            if not isinstance(img, Image.Image):  # видео ответа — стоп-кадр из его начала
+                img = next(iter(img))
+        images[name] = img
 
     out_dir = ws.project_dir(slug) / "output" / "preview"
     out_dir.mkdir(parents=True, exist_ok=True)
-    round_vals = text_values(len(in_round) or 1, question_seconds(project, rnd), round=rnd["title"],
-                             round_n=project["rounds"].index(rnd) + 1)
-    if is_three_tries(rnd):  # всего — исполнителей
-        round_vals["total"] = len(answer_groups(rnd, in_round)) or 1
-    label_vals = dict(round_vals, n=index)
-    group_vals = dict(round_vals, n=pos // 3 + 1)
-    base = r.question_base(fmt(texts["question_label"], **label_vals),
-                           fmt(row.get("question") or texts["prompt"], **label_vals), row.get("hint", ""),
-                           round_side(texts, label_vals))
-    pre = round(gap_seconds(project, rnd) * FPS)  # как в ролике: пауза с полным кольцом перед отсчётом
-    levels = np.concatenate([np.zeros((pre, levels.shape[1]), dtype=levels.dtype), levels])
-    reveal_s = min(r.ring.cfg.reveal_seconds, pre / FPS) if pre else r.ring.cfg.reveal_seconds
-    reveal_i = min(pre + q_frames - 1, int(reveal_s * FPS * 0.45))
-    images = {
-        "intro": (ImageOps.fit(Image.open(cover_file).convert("RGB"), (r.W, r.H)) if cover_file.is_file() else
-                  r.title_card(fmt(texts["intro_title"], **vals), fmt(texts["intro_subtitle"], **vals), 8)),
-        "rounds": r.rounds_list(round_titles(project)),
-        "round": r.round_card(rnd["title"], fmt(rnd.get("subtitle") or "", **round_vals), fmt(rnd["rules"], **round_vals)),
-        "reveal": r.question_frame(base, levels, reveal_i, q_frames, pre_frames=pre),
-        "question": r.question_frame(base, levels, pre + int(q_frames * 0.55), q_frames, pre_frames=pre),
-        "answers": r.title_card(fmt(texts["answers_title"], **round_vals), fmt(texts["answers_subtitle"], **round_vals)),
-        "answer": (group_preview(ws, project, r, fmt(texts["answer_label"], **group_vals), rnd, in_round, pos,
-                                 round_side(texts, group_vals)) if is_three_tries(rnd) else
-                   answer_preview(ws, r, fmt(texts["answer_label"], **label_vals), row, round_side(texts, label_vals))),
-        "outro": r.title_card(fmt(texts["outro_title"], **vals), fmt(texts["outro_subtitle"], **vals)),
-    }
     paths = {}
     for name, img in images.items():
         p = out_dir / f"{name}.jpg"
@@ -1580,26 +1596,6 @@ def preview(ws, slug, track_id=None, log=print):
         paths[name] = ws.rel(p)
     log(f"Предпросмотр готов (трек: {track_label(track) if track else 'пример'})")
     return {"images": paths, "track_id": track["id"] if track else None}
-
-
-def group_preview(ws, project, r, label, rnd, in_round, pos, side):
-    """Слайд «Трёх попыток» со всеми песнями группы, в которую входит трек."""
-    group = answer_groups(rnd, in_round)[pos // 3] if in_round else []
-    rows = prepare_rows_loose(ws, {"tracks": group}) or [{"title": "Название песни", "artist": "Исполнитель"}]
-    if group:
-        apply_covers(rows, cover_finder(ws, project).find_all(rows))
-    return r.answer_group_card(label, rows, len(rows), side)
-
-
-def answer_preview(ws, r, label, row, side):
-    """Ответ для предпросмотра: с видео — стоп-кадр из его начала с подписью."""
-    import youtube
-
-    if not row.get("answer_video"):
-        return r.answer_card(label, row, side)
-    video = answer_video_file(ws, row["answer_video"])
-    start = youtube.parse_url(row["answer_video"])[1] or 0
-    return next(r.video_answer_frames(video, start, r.answer_overlay(label, row, side), 1))
 
 
 def answers_sheet(ws, slug, log=print):
