@@ -1,7 +1,7 @@
 __pycache__/
 .venv/
 library/
-projects/*/output/
+projects/
 *.part.mp4
 __MACOSX/
 martian-grotesk-*/
