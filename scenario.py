@@ -108,6 +108,11 @@ def round_title(rnd, n):
     return rnd["title"] or f"Раунд {n}"
 
 
+def round_chapter(rnd, n):
+    """Глава раунда в описании YouTube: «Раунд 2 · Like Animals»."""
+    return " · ".join(p for p in (f"Раунд {n}", rnd["title"].strip()) if p)
+
+
 def round_titles(project):
     """Названия раундов для слайда списка раундов (без номеров)."""
     return [r["title"].strip() for r in project["rounds"]]
@@ -261,7 +266,7 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
             )
             return a_sound
 
-        chapter[0] = round_title(rnd, k)
+        chapter[0] = round_chapter(rnd, k)
         subtitle, rules = fmt(rnd.get("subtitle") or "", **rv), fmt(rnd["rules"], **rv)
         narration = fmt(rnd.get("narration") or "", **rv) or "\n".join(p for p in (rnd["title"], subtitle, rules) if p)
         intro_slide(
@@ -291,7 +296,7 @@ def build_scenario(project, rounds, narration_seconds, opening, scope):
 
         answer_sounds = [question(label, track) for ((label, track),) in groups]
         answers = {"title": fmt(texts["answers_title"], **rv), "subtitle": fmt(texts["answers_subtitle"], **rv)}
-        chapter[0] = answers["title"] or f"Ответы · {round_title(rnd, k)}"
+        chapter[0] = f"Ответы {round_chapter(rnd, k)}"
         intro_slide(
             "answers_card",
             "answers_intro",

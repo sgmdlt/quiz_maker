@@ -44,11 +44,8 @@ from scenario import (
     FPS,
     SAMPLE_RATE,
     SAMPLES_PER_FRAME,
-    answer_groups,
     fmt,
-    is_three_tries,
     plural,
-    round_title,
     text_values,
 )
 from spectrum_ring import RingConfig, SpectrumRing, analyze, config_from_dict
@@ -2246,17 +2243,7 @@ def build(ws, slug, limit=None, log=print, progress=None, cancel=None, round_id=
         ).title_card(intro_title).save(thumb, quality=92)
 
     desc_lines = [f"{intro_title}!"] + ([intro_subtitle] if intro_subtitle else []) + [""]
-    desc_lines += [f"{fmt_ts(ts)} {name}" for ts, name in sc.chapters(slides)] + ["", "Ответы:"]
-    for k, (rnd, rs) in enumerate(rounds, start=1):
-        if len(rounds) > 1:
-            desc_lines.append(round_title(rnd, k))
-        if is_three_tries(rnd):
-            desc_lines += [
-                f"{g}. {group_answer(grp)} — {', '.join(r['title'] for r in grp)}"
-                for g, grp in enumerate(answer_groups(rnd, rs), start=1)
-            ]
-        else:
-            desc_lines += [f"{i}. {track_label(row)}" for i, row in enumerate(rs, start=1)]
+    desc_lines += [f"{fmt_ts(ts)} {name}" for ts, name in sc.chapters(slides)]
     desc = out_dir / f"{stem}_description.txt"
     desc.write_text("\n".join(desc_lines) + "\n", encoding="utf-8")
 

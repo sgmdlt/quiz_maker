@@ -85,7 +85,7 @@ def test_build_three_tries_round(tmp_path, monkeypatch):
     ]
     expected = t["round"] + 6 * (3 + t["question"]) + 2 * (3 * 2 + t["answer_gap"])
     assert abs(result["duration"] - expected) < 0.1
-    assert "1. Группа — Раз, Два, Три" in result["description_text"]
+    assert "Группа" not in result["description_text"]  # ответов в описании нет, только главы
 
 
 def test_build_regular_round_answer_seconds(tmp_path):  # сквозной: настоящий ffmpeg
@@ -105,4 +105,5 @@ def test_build_regular_round_answer_seconds(tmp_path):  # сквозной: на
     result = qc.build(ws, slug, round_id="r1", log=lambda *_: None)
     expected = t["round"] + 2 * (t["gap"] + t["question"]) + t["answers_card"] + 2 * (3 + t["answer_gap"])
     assert abs(result["duration"] - expected) < 0.1
-    assert "1. А — П0" in result["description_text"]
+    assert "Ответы Раунд 1 · Тур" in result["description_text"]
+    assert "П0" not in result["description_text"]  # ответов в описании нет, только главы

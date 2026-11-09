@@ -91,10 +91,11 @@ def test_question_with_two_clips():
 
 
 def test_chapters_start_at_zero_and_mark_answers():
-    p = _quiz([{"id": "r1", "title": "Хиты"}, {"id": "r2", "title": "Кино"}])
+    # глава ответов называет раунд, даже если на слайде просто «Ответы»
+    p = _quiz([{"id": "r1", "title": "Хиты"}, {"id": "r2", "title": "Кино"}], texts={"answers_title": "Ответы"})
     slides = _slides(p, {"r1": [_track("a")], "r2": [_track("b")]})
     names = [name for _, name in sc.chapters(slides)]
-    assert names == ["Хиты", "Ответы · Хиты", "Кино", "Ответы · Кино"]
+    assert names == ["Раунд 1 · Хиты", "Ответы Раунд 1 · Хиты", "Раунд 2 · Кино", "Ответы Раунд 2 · Кино"]
     assert sc.chapters(slides)[0][0] == 0.0
 
 
